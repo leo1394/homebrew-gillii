@@ -18,7 +18,7 @@ Validated on the current macOS host with bundled Bash 3.2 and Node.js 22.12.0:
 
 Unverified: Fish behavior (not installed), Linux, older macOS versions, interactive Zsh quoting, Homebrew installation and `brew test`, live remote installer/release downloads, developer-tool execution and WXML rendering equivalence.
 
-The Formula points to the versioned GitHub Release installation archive with a computed SHA256. The external publisher bundles locked npm dependencies and regenerates the Formula. Python 3 is a development/test dependency, not a CLI runtime dependency. No sponsorship configuration is included. No private mini-program packages are bundled in this project.
+The Formula points to the versioned GitHub Release installation archive with a computed SHA256. The shared script-archive publishing strategy bundles locked npm dependencies and regenerates the Formula. Python 3 is a development/test dependency, not a CLI runtime dependency. No sponsorship configuration is included. No private mini-program packages are bundled in this project.
 
 ## Full local cache regression
 

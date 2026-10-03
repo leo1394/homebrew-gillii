@@ -1,8 +1,8 @@
-# gillii
-
-<p align="center"><strong>English</strong> · <a href="README-ZH.md">简体中文</a></p>
+# Gillii
 
 ![gillii banner](assets/banner.svg)
+
+<p align="center"><strong>English</strong> · <a href="README-ZH.md">简体中文</a></p>
 
 Find cached WeChat mini-program packages, decrypt them and restore readable client code through one Shell command.
 
@@ -12,17 +12,23 @@ Find cached WeChat mini-program packages, decrypt them and restore readable clie
 
 ## Install
 
-Requires Bash 3.2+ and Node.js 22+. npm and registry access are needed for `setup`.
-Only the current macOS host has been tested; Linux recovery is intended but unverified. Older macOS compatibility depends on a supported Node.js runtime.
-
-Release archives include the locked npm recovery dependencies. Installation extracts and copies files without local compilation. Node.js 22+ is required and installed by Homebrew. Homebrew clones the custom tap to read its Formula.
+### Homebrew (recommended)
 
 ```bash
 brew install leo1394/gillii/gillii
-gillii --version
 ```
 
-For development, use `bash install.sh --prefix "$HOME/.local"`. To publish from the parent directory, run `./publish.sh --target homebrew-gillii --version 0.1.0 --prepare`, then use `--apply` to publish the checked archive. Archives contain installation resources only, excluding WeChat caches and recovered application code.
+Homebrew installs Node.js and shell completions. The release includes recovery dependencies and requires no local compilation.
+
+### Bash (Linux / macOS)
+
+Requires Bash 3.2+ and Node.js 22+.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/leo1394/homebrew-gillii/master/install.sh | bash
+```
+
+The installer automatically downloads the latest stable release, verifies SHA256 and installs into `~/.local`. Add `~/.local/bin` to your PATH if needed. Run the installer again to upgrade. Tested on macOS; Linux recovery remains unverified.
 
 ## Get started
 

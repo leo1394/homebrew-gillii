@@ -1,8 +1,8 @@
-# gillii
-
-<p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
+# Gillii
 
 ![gillii 横幅](assets/banner.svg)
+
+<p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
 
 用一个 Shell 命令查找微信小程序缓存、解密包文件，并还原可阅读的客户端代码。
 
@@ -12,17 +12,23 @@
 
 ## 安装
 
-需要 Bash 3.2+、Node.js 22+；setup 需要 npm 和 npm 仓库网络访问。
-已在当前 macOS 主机验证；Linux 恢复流程尚未验证。旧版 macOS 是否可用取决于 Node.js 的系统支持。
-
-发布包包含恢复所需的 npm 依赖，安装时直接解压复制，无需在本机编译。需要 Node.js 22+，Homebrew 会安装 Node 依赖。自定义 tap 会被 Homebrew 克隆用于读取 Formula。
+### Homebrew（推荐）
 
 ```bash
 brew install leo1394/gillii/gillii
-gillii --version
 ```
 
-开发者发布：在父目录执行 `./publish.sh --target homebrew-gillii --version 0.1.0 --prepare`，检查后执行相同命令并将 `--prepare` 改为 `--apply`。发布包仅包含安装所需文件，不包含微信缓存和逆向结果。
+Homebrew 自动安装 Node.js 和 Shell 补全。发布包自带恢复依赖，无需本地编译。
+
+### Bash (Linux / macOS)
+
+需要 Bash 3.2+、Node.js 22+。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/leo1394/homebrew-gillii/master/install.sh | bash
+```
+
+安装器自动下载最新正式版并校验 SHA256，默认安装到 `~/.local`。如果 `~/.local/bin` 不在 PATH 中，按安装提示添加。再次运行安装器即可升级。已在 macOS 验证；Linux 恢复流程尚未验证。
 
 ## 快速上手
 

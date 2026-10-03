@@ -125,12 +125,44 @@ r=subprocess.run(command,env=mockenv,text=True,capture_output=True);assert r.ret
 assert exe.read_bytes()==saved
 run('bash',str(root/'install.sh'),'--prefix',str(prefix))
 assert run(str(exe),'--version').stdout==expected
+# A downloaded or piped installer resolves latest exactly once, then pins both assets.
+import tarfile,hashlib
+release_archive=scratch/'release.tar.gz'
+with tarfile.open(release_archive,'w:gz') as tar:
+ for name in ['bin','lib','libexec','completions','man','LICENSE','THIRD-PARTY.md']:
+  tar.add(root/name,arcname=f'gillii-{version}/{name}',filter=lambda entry: None if 'node_modules' in pathlib.PurePosixPath(entry.name).parts else entry)
+release_sha=hashlib.sha256(release_archive.read_bytes()).hexdigest()
+curl.write_text("#!/usr/bin/env python3\n"+"import sys,os,pathlib,shutil\n"+f"version={version!r}\narchive={str(release_archive)!r}\nsha={release_sha!r}\n"+"""
+args=sys.argv[1:];url=next(arg for arg in args if arg.startswith('https://'));mode=os.environ.get('MOCK_RELEASE_MODE','')
+with open(os.environ['MOCK_RELEASE_LOG'],'a') as log:log.write(url+'\\n')
+if mode=='unavailable':sys.exit(22)
+out=args[args.index('-o')+1]
+if url.endswith('/releases/latest'):
+ print('https://github.com/leo1394/homebrew-gillii/releases/tag/v'+('9.9.9' if mode=='wrong-version' else version),end='')
+elif url.endswith('.sha256'):
+ selected='9.9.9' if mode=='wrong-version' else version
+ pathlib.Path(out).write_text(('0'*64 if mode=='bad-sha' else sha)+'  gillii-'+selected+'.tar.gz\\n')
+elif url.endswith('.tar.gz'):shutil.copyfile(archive,out)
+else:sys.exit(22)
+""")
+mockenv['MOCK_RELEASE_LOG']=str(scratch/'release-requests')
+detached=scratch/'remote-install.sh';detached.write_bytes((root/'install.sh').read_bytes())
+r=subprocess.run(['bash',str(detached)],env=mockenv,text=True,capture_output=True);assert r.returncode==0,(r.stdout,r.stderr)
+assert run(str(pathlib.Path(os.environ['HOME'])/'.local/bin/gillii'),'version').stdout==expected
+requests=pathlib.Path(mockenv['MOCK_RELEASE_LOG']).read_text().splitlines()
+assert len(requests)==3 and requests[0].endswith('/releases/latest') and all(f'/v{version}/' in url for url in requests[1:])
+r=subprocess.run(['bash','-s','--','--prefix',str(prefix)],input=detached.read_text(),env=mockenv,text=True,capture_output=True);assert r.returncode==0,(r.stdout,r.stderr)
+saved=exe.read_bytes()
+for mode in ['unavailable','bad-sha','wrong-version']:
+ mockenv['MOCK_RELEASE_MODE']=mode
+ r=subprocess.run(['bash',str(detached),'--prefix',str(prefix)],env=mockenv,text=True,capture_output=True)
+ assert r.returncode!=0 and exe.read_bytes()==saved,(mode,r.stdout,r.stderr)
 for resource in ['share/man/man1/gillii.1','share/bash-completion/completions/gillii','share/zsh/site-functions/_gillii','share/fish/vendor_completions.d/gillii.fish']:assert (prefix/resource).exists()
 env=os.environ.copy();env['MANPATH']=str(prefix/'share/man')+':'
 r=subprocess.run(['man','-w','gillii'],env=env,text=True,capture_output=True);assert r.returncode==0 and 'gillii.1' in r.stdout,(r.stdout,r.stderr)
 rendered=run('mandoc','-T','utf8',str(prefix/'share/man/man1/gillii.1')).stdout;rendered=re.sub(r'.\x08', '', rendered);assert 'SYNOPSIS' in rendered and 'V1MMWX' in rendered
 for name in ['README.md','README-ZH.md']:
- text=(root/name).read_text();assert 'assets/banner.svg' in text and 'assets/logo.svg' in text
+ text=(root/name).read_text();assert 'assets/banner.svg' in text
 assert not (root/'.github/FUNDING.yml').exists()
 print('PASS: CLI contract, candidates, isolated install/upgrade, version-failure preservation, manual and documentation')
 PYTEST

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Local source installation or an explicitly versioned, checksum-verified archive.
+# Install the latest release automatically, or install a local source checkout.
 # Requires Bash 3.2+, tar, shasum. No Homebrew required.
 set -eu
 prefix=${HOME}/.local
@@ -9,7 +9,7 @@ while [ "$#" -gt 0 ]; do
     --prefix|--version|--archive|--sha256)
       key=$1;shift;[ "$#" -gt 0 ] || { printf 'Missing value for %s\n' "$key" >&2;exit 1; }
       case "$key" in --prefix) prefix=$1;; --version) expected=$1;; --archive) archive=$1;; --sha256) checksum=$1;; esac;;
-    --help|-h) printf 'Usage: bash install.sh [--prefix DIR] [--version VERSION]\nRemote/piped: bash -s -- --archive HTTPS_URL --sha256 HASH --version VERSION [--prefix DIR]\nDefault prefix: ~/.local. Installs CLI, manual and Bash/Zsh/Fish completion. No sudo or dependency installation.\n';exit 0;;
+    --help|-h) printf 'Usage: bash install.sh [--prefix DIR] [--version VERSION]\nDownloaded/piped scripts automatically install the latest stable release.\nDefault prefix: ~/.local. Installs CLI, manual and Bash/Zsh/Fish completion. No sudo or dependency installation.\n';exit 0;;
     *) printf 'Unknown option: %s\n' "$1" >&2;exit 1;;
   esac
   shift
@@ -19,20 +19,41 @@ case "$prefix" in /*) :;; *) prefix=$PWD/$prefix;; esac
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/gillii-install.XXXXXX")
 stage=''; launcher=''
 trap 'rm -rf "$scratch"; [ -z "$stage" ] || rm -rf "$stage"; [ -z "$launcher" ] || rm -f "$launcher"' EXIT
+source_root=''
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+  candidate=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+  if [ -f "$candidate/bin/gillii" ] && [ -f "$candidate/lib/metadata.sh" ]; then source_root=$candidate; fi
+fi
+if [ -z "$archive" ] && [ -z "$source_root" ]; then
+  repository=https://github.com/leo1394/homebrew-gillii
+  if [ -z "$expected" ]; then
+    latest=$(curl --fail --location --silent --show-error --proto '=https' --proto-redir '=https' \
+      "$repository/releases/latest" -o /dev/null --write-out '%{url_effective}')
+    case "$latest" in "$repository/releases/tag/v"*) expected=${latest##*/v};;
+      *) printf 'Cannot resolve latest gillii release.\n' >&2;exit 1;; esac
+  fi
+  [[ "$expected" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { printf 'Invalid release version.\n' >&2;exit 1; }
+  filename=gillii-$expected.tar.gz
+  archive=$repository/releases/download/v$expected/$filename
+  curl --fail --location --silent --show-error --proto '=https' --proto-redir '=https' \
+    "$repository/releases/download/v$expected/gillii-$expected.sha256" -o "$scratch/checksum"
+  checksum=$(awk -v filename="$filename" '$2 == filename { value=$1; count++ } END { if(count==1) print value; else exit 1 }' "$scratch/checksum")
+fi
 if [ -n "$archive" ]; then
-  [ -n "$expected" ] && [ "${#checksum}" -eq 64 ] || { printf 'Archive mode requires --version and --sha256.\n' >&2;exit 1; }
+  [ -n "$expected" ] && [[ "$checksum" =~ ^[0-9a-f]{64}$ ]] || { printf 'Archive mode requires --version and --sha256.\n' >&2;exit 1; }
   case "$archive" in https://*) curl --fail --location --silent --show-error --proto '=https' --proto-redir '=https' "$archive" -o "$scratch/source.tar.gz";;
     *) printf 'Archive URL must use HTTPS.\n' >&2;exit 1;; esac
-  actual=$(shasum -a 256 "$scratch/source.tar.gz" | awk '{print $1}')
+  if command -v shasum >/dev/null 2>&1; then
+    actual=$(shasum -a 256 "$scratch/source.tar.gz" | awk '{print $1}')
+  else
+    actual=$(sha256sum "$scratch/source.tar.gz" | awk '{print $1}')
+  fi
   [ "$actual" = "$checksum" ] || { printf 'SHA256 mismatch; previous installation preserved.\n' >&2;exit 1; }
   tar -tzf "$scratch/source.tar.gz" > "$scratch/entries"
   if LC_ALL=C grep -E '(^/|(^|/)\.\.(/|$))' "$scratch/entries" >/dev/null; then printf 'Unsafe archive paths.\n' >&2;exit 1;fi
   mkdir "$scratch/source"
   tar -xzf "$scratch/source.tar.gz" -C "$scratch/source" --strip-components=1
   source_root=$scratch/source
-else
-  [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ] || { printf 'Piped installation requires explicit archive, checksum and version.\n' >&2;exit 1; }
-  source_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 fi
 for file in bin/gillii lib/metadata.sh lib/contract.sh libexec/gillii.mjs man/gillii.1 completions/gillii.bash completions/gillii.zsh completions/gillii.fish;do
   [ -f "$source_root/$file" ] || { printf 'Missing resource: %s\n' "$file" >&2;exit 1; }

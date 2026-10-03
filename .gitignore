@@ -5,3 +5,4 @@ runs*/
 dist/
 wx*-*/
 __pycache__/
+/.publish.json

@@ -1,10 +1,8 @@
-[中文](README-ZH.md)
+# gillii
+
+<p align="center"><strong>English</strong> · <a href="README-ZH.md">简体中文</a></p>
 
 ![gillii banner](assets/banner.svg)
-
-<img src="assets/logo.svg" width="64" alt="gillii scan brackets and code logo">
-
-# gillii
 
 Find cached WeChat mini-program packages, decrypt them and restore readable client code through one Shell command.
 
@@ -26,7 +24,7 @@ gillii --version
 
 For development, use `bash install.sh --prefix "$HOME/.local"`. To publish from the parent directory, run `./publish.sh --target homebrew-gillii --version 0.1.0 --prepare`, then use `--apply` to publish the checked archive. Archives contain installation resources only, excluding WeChat caches and recovered application code.
 
-## First result
+## Get started
 
 Three commands are enough:
 
@@ -38,20 +36,9 @@ gillii chase wx0123456789abcdef
 
 If the AppID is unknown, quit desktop WeChat, run `gillii clean`, then reopen WeChat and visit only the target mini-program. Run `gillii list` to get its AppID, then `gillii chase <AppID>`.
 
-`list` and `clean --dry-run` show only `appid` and `modified`, one row per AppID using its newest package timestamp. Use `gillii info <AppID>` for package paths, versions, sizes and cache access details.
-
-Modification times use local time in `YYYY-MM-DD HH:mm:ss` format.
-
 `clean` permanently deletes discovered `.wxapkg` files, preserving other data. `chase` automatically selects the newest readable main package, copies it, decrypts and restores it. Release packages include dependencies; source installs prepare them automatically using npm. Results are saved under `./<AppID>-<unique suffix>/source`; original files, logs and report.json are retained alongside it. Repeated runs create separate directories.
 
 If macOS blocks access, grant the terminal access in system settings and retry. Optional overrides for copied caches or custom output paths are available with `gillii help chase`.
-
-## Completion
-
-Bash: `source "$HOME/.local/share/bash-completion/completions/gillii"`.
-Zsh: add `$HOME/.local/share/zsh/site-functions` to `fpath` before `autoload -Uz compinit; compinit`.
-Fish: `source ~/.local/share/fish/vendor_completions.d/gillii.fish`.
-Homebrew installs these resources under its standard directories; activate your shell's completion support as usual. Tab performs no setup or downloads.
 
 ## Limits and development
 

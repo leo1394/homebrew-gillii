@@ -1,10 +1,8 @@
-[English](README.md)
+# gillii
+
+<p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
 
 ![gillii 横幅](assets/banner.svg)
-
-<img src="assets/logo.svg" width="64" alt="gillii 扫描框与代码标志">
-
-# gillii
 
 用一个 Shell 命令查找微信小程序缓存、解密包文件，并还原可阅读的客户端代码。
 
@@ -26,7 +24,7 @@ gillii --version
 
 开发者发布：在父目录执行 `./publish.sh --target homebrew-gillii --version 0.1.0 --prepare`，检查后执行相同命令并将 `--prepare` 改为 `--apply`。发布包仅包含安装所需文件，不包含微信缓存和逆向结果。
 
-## 第一次还原
+## 快速上手
 
 主要只需三个命令：
 
@@ -38,20 +36,9 @@ gillii chase wx0123456789abcdef
 
 不知道 AppID 时，先退出桌面微信，执行 `gillii clean`，重新打开微信并只访问目标小程序。再用 `gillii list` 获取 AppID，执行 `gillii chase <AppID>`。
 
-`list` 和 `clean --dry-run` 仅显示 `appid`、`modified`；每个 AppID 一行，时间取最新包。需要包路径、版本、大小及访问详情时，执行 `gillii info <AppID>`。
-
-`modified` 统一按本机时区显示为 `YYYY-MM-DD HH:mm:ss`。
-
 `clean` 永久删除发现的 `.wxapkg` 包，保留其他数据。`chase` 自动选择最新可读主包、拷贝、解密和逆向；发布包自带依赖，源码安装首次执行会通过 npm 准备依赖，无需单独 setup。结果位于当前目录的 `./<AppID>-<唯一后缀>/source`，同时保留原包、日志和 report.json。重复执行会创建新目录。
 
 macOS 权限受限时，在系统设置中授权终端后重试。手动复制缓存或指定输出位置的可选参数可通过 `gillii help chase` 查看。
-
-## 补全启用
-
-Bash：`source "$HOME/.local/share/bash-completion/completions/gillii"`。
-Zsh：将 `$HOME/.local/share/zsh/site-functions` 加入 fpath，然后执行 `autoload -Uz compinit; compinit`。
-Fish：`source ~/.local/share/fish/vendor_completions.d/gillii.fish`。
-Homebrew 安装到其标准目录；仍需启用对应 Shell 的补全功能。按 Tab 不会安装依赖或下载内容。
 
 ## 限制与开发
 

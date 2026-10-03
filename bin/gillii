@@ -34,7 +34,7 @@ Quick start:
   gillii list
   gillii clean
   gillii chase wx0123456789abcdef
-Requires Bash 3.2+, Node.js 22+ for list/clean/setup/chase/info; npm/network on first run.
+Requires Bash 3.2+, Node.js 22+ for list/clean/setup/chase/info; npm/network for source installs without bundled dependencies.
 macOS privacy may require copying cache files with Finder first.
 No business API requests. Restoration is not original source.
 Use gillii help <command> for options and effects.
@@ -72,7 +72,7 @@ Copy, decrypt, extract, restore and statically verify cached packages.
 Usage: gillii chase <AppID>
 Automatically find the newest main package, copy it and restore source.
 Example: gillii chase wx0123456789abcdef
-Requires Node.js 22+. First run automatically installs dependencies using npm.
+Requires Node.js 22+. Release packages include dependencies; source installs prepare them automatically.
 Creates original.wxapkg, decrypted package, raw/, source/, logs/, report.json.
 Output: ./<AppID>-<unique suffix>/source. Failed runs are retained.
 Optional overrides: --input <file/directory>, --output <new directory>.

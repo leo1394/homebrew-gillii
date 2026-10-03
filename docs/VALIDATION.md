@@ -1,4 +1,4 @@
-# Validation — 0.1.0-dev, 2026-10-03
+# Validation — 0.1.0, 2026-10-03
 
 Validated on the current macOS host with bundled Bash 3.2 and Node.js 22.12.0:
 
@@ -18,7 +18,7 @@ Validated on the current macOS host with bundled Bash 3.2 and Node.js 22.12.0:
 
 Unverified: Fish behavior (not installed), Linux, older macOS versions, interactive Zsh quoting, Homebrew installation and `brew test`, live remote installer/release downloads, developer-tool execution and WXML rendering equivalence.
 
-The Formula points to a real local archive with a computed SHA256, not an advertised public release. `scripts/package.sh` rebuilds the archive and local Formula. Python 3 is a development/test dependency, not a CLI runtime dependency. No sponsorship configuration, remote push, tag or release was created. No private mini-program packages are bundled in this project.
+The Formula points to the versioned GitHub Release installation archive with a computed SHA256. `scripts/package.sh --release` bundles locked npm dependencies and regenerates the Formula. Python 3 is a development/test dependency, not a CLI runtime dependency. No sponsorship configuration is included. No private mini-program packages are bundled in this project.
 
 ## Full local cache regression
 
@@ -27,3 +27,5 @@ All 14 supplied AppIDs passed the actual `bin/gillii chase` command against copi
 The five caches with unavailable declared pages are wx7ec43a6a6c80544d (315), wx81ce904580cc0ff1 (14), wxa8da525af05281f3 (279), wxb1a70937ee94c194 (79) and wxdcd3d073e47d1742 (65). These pages cannot be restored without their packages.
 
 Developer reproduction: `node scripts/validate-cache.mjs <copied-cache-directory> <new-results-directory>`. Each result retains the command log, restored source and detailed report. Local evidence: [summary](../runs-cache-validation-final/summary.json).
+
+Release validation: the installation archive passes all 19 helper tests and isolated installation. A first synthetic recovery runs with npm disabled, proving that bundled dependencies require no first-run download.

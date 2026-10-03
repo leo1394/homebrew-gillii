@@ -15,7 +15,10 @@ def run(*args,ok=True):
  if ok: assert r.returncode==0,(args,r.stdout,r.stderr)
  else: assert r.returncode!=0,(args,r.stdout,r.stderr)
  return r
-expected='gillii version 0.1.0-dev (2026-10-02)\nhttps://github.com/leo1394/homebrew-gillii\n'
+metadata=(root/'lib/metadata.sh').read_text()
+version=re.search(r"GILLII_VERSION='([^']+)'",metadata)[1]
+date=re.search(r"GILLII_DATE='([^']+)'",metadata)[1]
+expected=f'gillii version {version} ({date})\nhttps://github.com/leo1394/homebrew-gillii\n'
 for arg in ['version','--version']:assert run('gillii',arg).stdout==expected
 for cmd in ['list','clean','chase','info','setup','version','help','completion']:
  assert run('gillii','help',cmd).stdout
@@ -106,7 +109,7 @@ assert (pathlib.Path(os.environ['HOME'])/'npm-called').exists()
 assert 'Usage: gillii chase <AppID>' in run('gillii','chase',ok=False).stderr
 assert 'Invalid AppID' in run('gillii','chase','invalid',ok=False).stderr
 prefix=scratch/'install space'
-run('bash',str(root/'install.sh'),'--prefix',str(prefix),'--version','0.1.0-dev')
+run('bash',str(root/'install.sh'),'--prefix',str(prefix),'--version',version)
 exe=prefix/'bin/gillii';assert run(str(exe),'version').stdout==expected
 saved=exe.read_bytes()
 run('bash',str(root/'install.sh'),'--prefix',str(prefix),'--version','9.9.9',ok=False)
@@ -114,7 +117,7 @@ assert exe.read_bytes()==saved
 mock=scratch/'mockbin';mock.mkdir()
 curl=mock/'curl';curl.write_text('#!/bin/bash\nexit 22\n');curl.chmod(0o755)
 mockenv=os.environ.copy();mockenv['PATH']=str(mock)+':'+mockenv['PATH']
-command=['bash',str(root/'install.sh'),'--prefix',str(prefix),'--version','0.1.0-dev','--archive','https://example.invalid/source.tar.gz','--sha256','0'*64]
+command=['bash',str(root/'install.sh'),'--prefix',str(prefix),'--version',version,'--archive','https://example.invalid/source.tar.gz','--sha256','0'*64]
 r=subprocess.run(command,env=mockenv,text=True,capture_output=True);assert r.returncode!=0
 assert exe.read_bytes()==saved
 curl.write_text('#!/bin/bash\nwhile [ "$#" -gt 0 ];do if [ "$1" = -o ];then shift;printf bad > "$1";exit 0;fi;shift;done\nexit 1\n')

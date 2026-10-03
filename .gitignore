@@ -3,3 +3,5 @@ node_modules/
 runs*/
 .DS_Store
 dist/
+wx*-*/
+__pycache__/

@@ -1,0 +1,106 @@
+.TH GILLII 1 "2026-10-02" "gillii 0.1.0-dev" "User Commands"
+.SH NAME
+gillii \- locate and restore cached WeChat mini-program packages
+.SH SYNOPSIS
+.B gillii
+.RI "list [--appid ID] [--root DIR]"
+.br
+.B gillii
+.RI "clean [--appid ID] [--root DIR] [--dry-run]"
+.br
+.B gillii
+.RI "info ID [--root DIR]"
+.br
+.B gillii
+.RI "chase ID"
+.br
+.B gillii
+.RI "setup | version | help [COMMAND] | completion bash|zsh|fish"
+.SH DESCRIPTION
+A Bash orchestration tool using Node.js 22+ for V1MMWX decryption,
+main-package extraction, restoration and static verification.
+This is an unpublished development build.
+https://github.com/leo1394/homebrew-gillii
+.SH COMMANDS
+.TP
+.B list
+Print only AppID and latest modification time, one row per AppID.
+.TP
+.B info
+Show all cached packages for an AppID, including paths, versions, sizes,
+modification times, cache roots and blocked paths.
+.TP
+.B clean
+Permanently delete discovered .wxapkg files;
+preserve other files and directories.
+Quit WeChat first, then reopen only the target mini-program and run list.
+Blocked paths or deletion errors cause a nonzero exit status.
+.TP
+.B setup
+Copy bundled helpers to a user cache and install locked npm dependencies.
+Requires npm registry access. Lifecycle scripts are disabled.
+.TP
+.B chase
+Automatically select the newest readable main package, copy and restore it.
+Install dependencies on first run; create ./ID-unique-suffix/source.
+Failures preserve logs.
+No business API requests are made.
+.TP
+.B completion
+Print Bash, Zsh or Fish completion without runtime dependencies.
+.TP
+.B version, --version
+Print exactly two metadata lines.
+.TP
+.B help, --help
+Print help; command-specific help is also supported.
+.SH OPTIONS
+.TP
+.B --appid ID
+An identifier of the form wx followed by 16 lowercase hexadecimal digits.
+.TP
+.B --root DIR
+Optional cache search directory for list, info or clean.
+.TP
+.B --dry-run
+Preview AppIDs and latest modification times without deleting files.
+.TP
+.B --input FILE_OR_DIR
+Optional package file or directory; select its newest readable main package.
+.TP
+.B --output NEWDIR
+Optional new output directory; parent must exist.
+.TP
+.B --
+End option parsing. These commands accept no positional operands afterward.
+.SH EXAMPLES
+.nf
+gillii list
+gillii info wx0123456789abcdef
+gillii clean
+gillii chase wx0123456789abcdef
+gillii help chase
+.fi
+.SH ENVIRONMENT
+.TP
+.B XDG_CACHE_HOME
+Cache root, default $HOME/.cache.
+.TP
+.B GILLII_NODE
+Node executable, default node.
+.SH FILES
+Output includes original.wxapkg, decrypted package, raw/, source/, logs/
+and report.json. Dependencies are stored under the versioned user cache.
+.SH CAVEATS
+macOS privacy may block terminal reads. Copy the AppID directory with Finder
+and use --input. AppID paths and timestamps cannot identify an app by name.
+Cached subpackages from the same version are merged. Uncached pages are
+listed in report.json with status complete_cached. Games are unsupported.
+Original variable names,
+server code and runtime equivalence cannot be recovered or guaranteed.
+.SH EXIT STATUS
+0 for success; 1 for invalid input, missing dependencies,
+restoration or validation failure.
+.SH SEE ALSO
+.BR bash (1),
+.BR node (1)

@@ -1,0 +1,166 @@
+#!/bin/bash
+# Bash 3.2+: orchestration only. Helpers require no Node runtime.
+set -eu
+gillii_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$gillii_root/lib/metadata.sh"
+. "$gillii_root/lib/contract.sh"
+gillii_error() { printf 'gillii: %s\n' "$1" >&2; exit 1; }
+gillii_suggest() {
+  bad=$1; shift
+  printf 'gillii: unknown %s\n' "$bad" >&2
+  printf '%s\n' "$@" | LC_ALL=C sort | awk -v word="$bad" '
+    function distance(a,b, i,j,x,y,z) {
+      for(i=0;i<=length(a);i++)d[i,0]=i;
+      for(j=0;j<=length(b);j++)d[0,j]=j;
+      for(i=1;i<=length(a);i++)for(j=1;j<=length(b);j++) {
+        x=d[i-1,j]+1;y=d[i,j-1]+1;z=d[i-1,j-1]+(substr(a,i,1)!=substr(b,j,1));
+        d[i,j]=(x<y?x:y);if(z<d[i,j])d[i,j]=z;
+      } return d[length(a),length(b)];
+    }
+    { n=distance(word,$0); if(n<=2 && (best=="" || n<best)){best=n;candidate=$0} }
+    END {if(candidate!="")printf "Did you mean '\''%s'\''?\n",candidate;}
+  ' >&2
+  printf "Use 'gillii help' or 'gillii help <command>'.\n" >&2
+  exit 1
+}
+gillii_help() {
+  case "${1:-}" in
+    '') cat <<'EOF'
+gillii — locate, decrypt and restore cached WeChat mini-program packages.
+Usage: gillii <command> [options]
+Commands: list, clean, chase, info
+Utilities: version, help, completion, setup
+Quick start:
+  gillii list
+  gillii clean
+  gillii chase wx0123456789abcdef
+Requires Bash 3.2+, Node.js 22+ for list/clean/setup/chase/info; npm/network on first run.
+macOS privacy may require copying cache files with Finder first.
+No business API requests. Restoration is not original source.
+Use gillii help <command> for options and effects.
+EOF
+      ;;
+    list) cat <<'EOF'
+List AppIDs and their latest package modification times.
+Usage: gillii list
+Defaults: macOS WeChat cache roots; all AppIDs, newest modification first.
+Example: gillii list
+Optional filters: --appid <AppID>, --root <directory>.
+Requires Node.js 22+. AppID paths do not prove application names.
+Read-only; blocked paths are reported. Copy with Finder if macOS denies access.
+EOF
+      ;;
+    info) cat <<'EOF'
+Show detailed cached package information for an AppID.
+Usage: gillii info <AppID>
+Includes package paths, versions, sizes, modification times and blocked paths.
+Optional: --root <directory> for a copied cache.
+EOF
+      ;;
+    clean) cat <<'EOF'
+Delete discovered .wxapkg packages, preserving other WeChat data.
+Usage: gillii clean
+Defaults: same macOS WeChat cache roots as list; all AppIDs.
+Example: gillii clean
+Optional: --dry-run lists AppIDs and latest modification times; --appid and --root limit the scope.
+Quit WeChat before cleaning; reopen only the target mini-program, then run gillii list.
+Requires Node.js 22+. Deletion is permanent. Blocked paths/errors cause failure.
+EOF
+      ;;
+    chase) cat <<'EOF'
+Copy, decrypt, extract, restore and statically verify cached packages.
+Usage: gillii chase <AppID>
+Automatically find the newest main package, copy it and restore source.
+Example: gillii chase wx0123456789abcdef
+Requires Node.js 22+. First run automatically installs dependencies using npm.
+Creates original.wxapkg, decrypted package, raw/, source/, logs/, report.json.
+Output: ./<AppID>-<unique suffix>/source. Failed runs are retained.
+Optional overrides: --input <file/directory>, --output <new directory>.
+Cached subpackages from the same version are merged; uncached pages are reported.
+No developer-tool runtime/rendering-equivalence guarantee.
+EOF
+      ;;
+    setup) cat <<'EOF'
+Prepare an isolated user cache and install locked npm dependencies.
+Usage: gillii setup
+Example: gillii setup
+Requires Node.js 22+, npm and network access to the npm registry.
+Cache: ${XDG_CACHE_HOME:-$HOME/.cache}/gillii/<version>
+Installs dependencies with npm ci --ignore-scripts. Does not install Node or alter shell startup files.
+EOF
+      ;;
+    version) printf 'Usage: gillii version | gillii --version\nPrint two metadata lines; no dependencies. Development builds are labeled -dev.\n';;
+    completion) printf 'Usage: gillii completion bash|zsh|fish\nExample: source <(gillii completion bash)\nPrint a completion script only; no application dependencies or downloads.\n';;
+    help) printf 'Usage: gillii help [list|clean|chase|info|setup|version|completion|help]\nExample: gillii help chase\nPrint help without running commands.\n';;
+    *) gillii_suggest "$1" $gillii_commands;;
+  esac
+}
+gillii_complete() {
+  # Arguments are the command-line words after gillii, including current prefix.
+  command=${1:-}; prev=''; current=''; ended=0; count=$#
+  for word in "$@"; do prev=$current;current=$word;[ "$word" != '--' ] || ended=1; done
+  [ "$ended" = 0 ] || return 0
+  if [ "$count" -le 1 ]; then printf '%s\n' $gillii_commands --help --version; return; fi
+  case "$command:$prev" in
+    help:* ) printf '%s\n' $gillii_commands;;
+    completion:*) printf '%s\n' bash zsh fish;;
+    list:--root|clean:--root|info:--root|chase:--output) printf '@directories\n';;
+    chase:--input) printf '@paths\n';;
+    list:--appid|clean:--appid|info:--appid|chase:--appid) :;;
+    list:*|clean:*|chase:*|info:*) gillii_options "$command";;
+  esac
+}
+command=${1:-help}
+[ "$#" -eq 0 ] || shift
+if [ "$command" = version ] && [ "$#" -eq 1 ] && { [ "$1" = --help ] || [ "$1" = -h ]; }; then gillii_help version; exit 0; fi
+case "$command" in
+  --help|-h) gillii_help; exit 0;;
+  --version|version) [ "$#" -eq 0 ] || gillii_error 'version takes no arguments'; printf 'gillii version %s (%s)\n%s\n' "$GILLII_VERSION" "$GILLII_DATE" "$GILLII_REPOSITORY"; exit 0;;
+  __complete) gillii_complete "$@"; exit 0;;
+  help) if [ "${1:-}" = --help ] || [ "${1:-}" = -h ]; then gillii_help help; exit 0; fi; [ "$#" -le 1 ] || gillii_error 'help takes one command'; gillii_help "${1:-}"; exit 0;;
+  list|clean|chase|info|setup|completion) :;;
+  *) gillii_suggest "$command" $gillii_commands;;
+esac
+# Help succeeds without checking Node or touching the cache.
+for argument in "$@"; do if [ "$argument" = '--help' ] || [ "$argument" = '-h' ]; then gillii_help "$command"; exit 0; fi; done
+if [ "$command" = completion ]; then
+  [ "$#" -eq 1 ] || gillii_error 'completion requires bash, zsh or fish'
+  case "$1" in bash|zsh|fish) cat "$gillii_root/completions/gillii.$1";; *) gillii_suggest "$1" bash zsh fish;; esac
+  exit 0
+fi
+# The normal recovery flow needs only an AppID.
+if { [ "$command" = chase ] || [ "$command" = info ]; } && [ "$#" -gt 0 ]; then
+  case "$1" in --*) :;; *) set -- --appid "$1" "${@:2}";; esac
+fi
+# Validate only command tokens/options, never guess corrections for user values.
+args=("$@"); index=0
+while [ "$index" -lt "${#args[@]}" ]; do
+  flag=${args[$index]}
+  if [ "$flag" = '--' ]; then
+    [ "$((index + 1))" -eq "${#args[@]}" ] || gillii_error 'positional arguments after -- are not supported'
+    unset 'args[index]'; break
+  fi
+  case "$command:$flag" in
+    list:--appid|list:--root|info:--appid|info:--root|clean:--appid|clean:--root|chase:--appid|chase:--input|chase:--output)
+      index=$((index + 1)); [ "$index" -lt "${#args[@]}" ] || gillii_error "missing value for $flag"
+      case "${args[$index]}" in --*) gillii_error "missing value for $flag";; esac;;
+    clean:--dry-run) :;;
+    *) gillii_suggest "$flag" $(gillii_options "$command");;
+  esac
+  index=$((index + 1))
+done
+node_command=${GILLII_NODE:-node}
+command -v "$node_command" >/dev/null 2>&1 || gillii_error 'Node.js 22+ is required. Install Node, then retry.'
+"$node_command" -e 'if (+process.versions.node.split(".")[0] < 22) process.exit(1)' || gillii_error 'Node.js 22+ is required.'
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/gillii/$GILLII_VERSION
+if [ "$command" = setup ]; then
+  mkdir -p "$cache"
+  cp -R "$gillii_root/libexec/." "$cache/"
+  exec "$node_command" "$cache/gillii.mjs" setup
+elif [ "$command" = chase ]; then
+  mkdir -p "$cache"
+  cp -R "$gillii_root/libexec/." "$cache/"
+  exec "$node_command" "$cache/gillii.mjs" chase ${args[@]+"${args[@]}"}
+else
+  exec "$node_command" "$gillii_root/libexec/gillii.mjs" "$command" ${args[@]+"${args[@]}"}
+fi

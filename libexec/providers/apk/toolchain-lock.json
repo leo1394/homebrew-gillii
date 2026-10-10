@@ -97,5 +97,18 @@
         "checksum_source": "https://pypi.org/pypi/tpk_ar/0.2.4/json"
       }
     }
+  },
+  "blutter": {
+    "revision": "4a60ac648bf448c5a7596437243bcd0b9376fdf0",
+    "url": "https://api.github.com/repos/worawit/blutter/zipball/4a60ac648bf448c5a7596437243bcd0b9376fdf0",
+    "hash": "2747c15f3febba110c724858cf2b22d1b1444f92c8bd38fdceaad0604d7b1550",
+    "packages": {
+      "pyelftools": "0.32",
+      "requests": "2.32.5",
+      "urllib3": "2.5.0",
+      "certifi": "2025.10.5",
+      "charset-normalizer": "3.4.4",
+      "idna": "3.11"
+    }
   }
 }

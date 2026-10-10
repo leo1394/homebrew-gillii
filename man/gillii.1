@@ -1,4 +1,4 @@
-.TH GILLII 1 "2026-10-10" "gillii 0.2.0" "User Commands"
+.TH GILLII 1 "2026-10-10" "gillii 0.3.0" "User Commands"
 .SH NAME
 gillii \- restore cached WeChat mini-program packages and analyze APK files
 .SH SYNOPSIS
@@ -15,7 +15,7 @@ gillii \- restore cached WeChat mini-program packages and analyze APK files
 .RI "chase ID | chase FILE.apk [--output NEWDIR]"
 .br
 .B gillii
-.RI "setup | version | help [COMMAND] | completion bash|zsh|fish"
+.RI "open | setup | version | help [COMMAND] | completion bash|zsh|fish"
 .SH DESCRIPTION
 A Bash orchestration tool using Node.js 22+ for V1MMWX decryption,
 main-package extraction, restoration and static verification.
@@ -50,6 +50,10 @@ An APK path selects Android analysis, raw extraction, ordinary Android
 decompilation or Unity Mono export. Type-specific tools are prepared
 automatically. Results include an HTML index and reproduction notes.
 A complete analysis does not guarantee a buildable original project.
+.TP
+.B open
+Reopen the most recent chase workbench without running analysis again.
+The retained report must still exist.
 .TP
 .B completion
 Print Bash, Zsh or Fish completion without runtime dependencies.
@@ -118,6 +122,11 @@ Output includes original.wxapkg, decrypted package, raw/, source/, logs/
 and report.json. Mini-program reports also include index.html, evidence/ inventories
 and static API/config analysis, plus docs/analysis.md and docs/reproduction.md.
 Selected package snapshots are kept together under packages/<AppID>/ for replay.
+Mini-program analysis links pages, components, events, functions and API calls
+with source evidence, unresolved gaps and investigation next steps.
+Interactive runs open a local report viewer; automated calls retain offline HTML.
+Set GILLII_REPORT_OPEN=0 to disable automatic opening. The loopback viewer expires
+after ten idle minutes or one hour.
 Dependencies are stored under the versioned user cache.
 APK results include raw/original.apk, extracted/, evidence/, decompiled/,
 unity-export/, docs/reproduction.md,

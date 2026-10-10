@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { findPackages, extractPackage, restoreCompiledConfigs, verifyRecovery } from './gillii.mjs';
+import { findPackages, extractPackage, restoreCompiledConfigs, verifyRecovery } from './index.mjs';
 
 function packageFor(name) {
   const filename = Buffer.from(name), body = Buffer.from('example');
@@ -46,7 +46,7 @@ test('rejects traversal before writing files', () => {
 });
 
 test('CLI rejects unknown options and incomplete chase arguments', () => {
-  const cli = fileURLToPath(new URL('./gillii.mjs', import.meta.url));
+  const cli = fileURLToPath(new URL('../../gillii.mjs', import.meta.url));
   for (const args of [['chase', '--force'], ['chase', '--appid', 'wxc879ed7b2efd35e3']]) {
     const result = spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
     assert.equal(result.status, 1);

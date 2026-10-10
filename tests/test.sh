@@ -20,7 +20,7 @@ version=re.search(r"GILLII_VERSION='([^']+)'",metadata)[1]
 date=re.search(r"GILLII_DATE='([^']+)'",metadata)[1]
 expected=f'gillii version {version} ({date})\nhttps://github.com/leo1394/homebrew-gillii\n'
 for arg in ['version','--version']:assert run('gillii',arg).stdout==expected
-for cmd in ['list','clean','chase','info','setup','version','help','completion']:
+for cmd in ['list','clean','chase','info','open','setup','version','help','completion']:
  assert run('gillii','help',cmd).stdout
  assert run('gillii',cmd,'--help').stdout
 for args in [('list',),('list','--'),('list','--root',str(scratch),'--')]:
@@ -30,7 +30,7 @@ assert '--output' in run('gillii','chase','--ouptut',ok=False).stderr
 assert 'Did you mean' not in run('gillii','abcdefghi',ok=False).stderr
 assert 'Node' in run('env','GILLII_NODE=/nonexistent','gillii','list',ok=False).stderr
 assert run('env','GILLII_NODE=/nonexistent','gillii','help','chase').stdout
-assert run('gillii','__complete','help','').stdout.splitlines()==['list','clean','chase','info','setup','version','help','completion']
+assert run('gillii','__complete','help','').stdout.splitlines()==['list','clean','chase','info','open','setup','version','help','completion']
 assert run('gillii','__complete','completion','').stdout.splitlines()==['bash','zsh','fish']
 assert run('gillii','__complete','chase','--input','').stdout=='@paths\n'
 assert run('gillii','__complete','list','--root','').stdout=='@directories\n'
@@ -96,7 +96,9 @@ sub=cachepath/'newer.wxapkg';sub.write_bytes(package_bytes({'page.js':b''}));os.
 npmroot=scratch/'npm mock';npmroot.mkdir();npm=npmroot/'npm'
 npm.write_text('#!/bin/bash\nmkdir -p node_modules/acorn\nprintf stub > node_modules/acorn/package.json\nprintf called > "$HOME/npm-called"\n');npm.chmod(0o755)
 autoenv=os.environ.copy();autoenv['PATH']=str(npmroot)+':'+autoenv['PATH']
-bundled=(root/'libexec/tools/wxappUnpacker/node_modules/acorn').exists()
+apkcache=scratch/'apk tools must stay absent';autoenv['GILLII_APK_CACHE']=str(apkcache)
+autoenv['GILLII_APK_LAUNCHER_PYTHON']='/nonexistent-apk-python'
+bundled=(root/'libexec/providers/miniprogram/tools/wxappUnpacker/node_modules/acorn').exists()
 for attempt in range(2):
  r=subprocess.run([str(root/'bin/gillii'),'chase',appid],cwd=work,env=autoenv,text=True,capture_output=True)
  assert r.returncode!=0 and 'Package:' in r.stdout,(r.stdout,r.stderr)
@@ -107,6 +109,7 @@ for output in outputs:
  assert (output/'raw/app-config.json').exists()
  assert json.loads((output/'report.json').read_text())['input']==str(main)
 assert (pathlib.Path(os.environ['HOME'])/'npm-called').exists()==(not bundled)
+assert not apkcache.exists(), 'mini-program chase must not prepare APK dependencies'
 assert 'Usage: gillii chase <AppID|path/to/app.apk>' in run('gillii','chase',ok=False).stderr
 assert 'Invalid AppID' in run('gillii','chase','invalid',ok=False).stderr
 prefix=scratch/'install space'

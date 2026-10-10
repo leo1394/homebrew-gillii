@@ -1,4 +1,4 @@
-gillii_commands='list clean chase info setup version help completion'
+gillii_commands='list clean chase info open setup version help completion'
 gillii_options() {
   case "$1" in
     list) printf '%s\n' --appid --root --help;;

@@ -28,7 +28,7 @@ gillii_help() {
     '') cat <<'EOF'
 gillii — restore cached WeChat mini-programs and statically analyze APK files.
 Usage: gillii <command> [options]
-Commands: list, clean, chase, info
+Commands: list, clean, chase, info, open
 Utilities: version, help, completion, setup
 Quick start:
   gillii list
@@ -76,6 +76,8 @@ Requires Node.js 22+. Release packages include dependencies; source installs pre
 Creates original.wxapkg, decrypted package, raw/, source/, logs/, report.json.
 Mini-program analysis: index.html, evidence/ and docs/{analysis,reproduction}.md.
 Reports include stage status, file hashes, static API/config evidence and package snapshots.
+Interactive runs open a local report with investigation relationships and next steps.
+Offline index.html remains available; GILLII_REPORT_OPEN=0 disables automatic opening.
 Output: ./<AppID>-<unique suffix>/source. Failed runs are retained.
 Optional overrides: --input <file/directory>, --output <new directory>.
 Without an AppID, --input selects an APK; APK analysis requires Python 3.10+.
@@ -84,6 +86,13 @@ Tools are prepared by package type; GILLII_APK_OFFLINE=1 disables downloads.
 APK analysis may be partial (exit 2); readable output is not a buildable project.
 Cached subpackages from the same version are merged; uncached pages are reported.
 No developer-tool runtime/rendering-equivalence guarantee.
+EOF
+      ;;
+    open) cat <<'EOF'
+Reopen the most recent chase workbench without repeating analysis.
+Usage: gillii open
+Uses the retained report directory, including failed or partial results.
+Requires Node.js 22+. The report must still exist.
 EOF
       ;;
     setup) cat <<'EOF'
@@ -97,7 +106,7 @@ EOF
       ;;
     version) printf 'Usage: gillii version | gillii --version\nPrint two metadata lines; no dependencies. Development builds are labeled -dev.\n';;
     completion) printf 'Usage: gillii completion bash|zsh|fish\nExample: source <(gillii completion bash)\nPrint a completion script only; no application dependencies or downloads.\n';;
-    help) printf 'Usage: gillii help [list|clean|chase|info|setup|version|completion|help]\nExample: gillii help chase\nPrint help without running commands.\n';;
+    help) printf 'Usage: gillii help [list|clean|chase|info|open|setup|version|completion|help]\nExample: gillii help chase\nPrint help without running commands.\n';;
     *) gillii_suggest "$1" $gillii_commands;;
   esac
 }
@@ -132,7 +141,7 @@ case "$command" in
   --version|version) [ "$#" -eq 0 ] || gillii_error 'version takes no arguments'; printf 'gillii version %s (%s)\n%s\n' "$GILLII_VERSION" "$GILLII_DATE" "$GILLII_REPOSITORY"; exit 0;;
   __complete) gillii_complete "$@"; exit 0;;
   help) if [ "${1:-}" = --help ] || [ "${1:-}" = -h ]; then gillii_help help; exit 0; fi; [ "$#" -le 1 ] || gillii_error 'help takes one command'; gillii_help "${1:-}"; exit 0;;
-  list|clean|chase|info|setup|completion) :;;
+  list|clean|chase|info|open|setup|completion) :;;
   *) gillii_suggest "$command" $gillii_commands;;
 esac
 # Help succeeds without checking Node or touching the cache.

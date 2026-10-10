@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
-MODULE = Path(__file__).resolve().parents[1] / 'libexec/apk/deps.py'
+MODULE = Path(__file__).resolve().parents[1] / 'libexec/providers/apk/deps.py'
 spec = importlib.util.spec_from_file_location('apk_deps', MODULE)
 deps = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(deps)

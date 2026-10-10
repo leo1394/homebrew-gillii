@@ -14,14 +14,14 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-MODULES = Path(__file__).resolve().parents[1] / 'libexec/apk'
+MODULES = Path(__file__).resolve().parents[1] / 'libexec/providers/apk'
 if not MODULES.is_dir():
     MODULES = Path(__file__).resolve().parent
 sys.path.insert(0, str(MODULES))
 import pipeline
 import cclient
 import unity_export
-from report import write_report
+from report import write_report, application_name
 
 
 class APKTests(unittest.TestCase):
@@ -29,6 +29,17 @@ class APKTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.apk = self.root / 'app.apk'
+
+    def test_application_name_uses_labels_and_rejects_unresolved_resources(self):
+        (self.root / 'evidence').mkdir()
+        (self.root / 'extracted').mkdir()
+        manifest = self.root / 'extracted/AndroidManifest.xml'
+        manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:label="@string/app_name" /></manifest>')
+        self.assertEqual(application_name(self.root), '')
+        manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:label="CClient中控" /></manifest>')
+        self.assertEqual(application_name(self.root), 'CClient中控')
+        (self.root / 'evidence/metadata.txt').write_text("application-label:'正式名称'\n")
+        self.assertEqual(application_name(self.root), '正式名称')
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -233,12 +244,12 @@ class APKTests(unittest.TestCase):
         def run(runner, stage, argv):
             calls.append((stage, argv))
             log = runner.root / 'logs' / (stage + '.log')
-            log.write_text('tool diagnostics')
+            log.write_text('ERROR - Method: example.Test.broken():void\nERROR - finished with errors, count: 3\n')
             destination = Path(argv[argv.index('-d') + 1])
             destination.mkdir(parents=True)
             (destination / 'Test.java').write_text(stage)
             ok = stage == 'dex-simple'
-            runner.report['stages'].append({'name': stage, 'status': 'complete' if ok else 'partial', 'returncode': 0 if ok else 1})
+            runner.report['stages'].append({'name': stage, 'status': 'complete' if ok else 'partial', 'returncode': 0 if ok else 1, 'log': log.relative_to(runner.root).as_posix()})
             return ok, log
         with mock.patch.object(pipeline.Runner, 'run', run):
             code, root = pipeline.analyze(self.apk, self.root / 'out', resolver=lambda *a, **k: {'jadx': '/tools/jadx'})
@@ -248,6 +259,23 @@ class APKTests(unittest.TestCase):
         self.assertEqual((root / 'decompiled/java/Test.java').read_text(), 'dex-decompile')
         self.assertEqual((root / 'decompiled/java-simple/Test.java').read_text(), 'dex-simple')
         self.assertTrue((root / 'logs/execution.log').is_file())
+
+        report = json.loads((root / 'report.json').read_text())
+        modes = {item['mode']: item for item in report['decompilation']}
+        self.assertEqual(modes['normal']['source_files'], 1)
+        self.assertEqual(modes['normal']['error_count'], 3)
+        self.assertEqual(modes['simple']['source_files'], 1)
+        self.assertIn('example.Test.broken', modes['normal']['diagnostics'][0])
+        self.assertIn('1 Java files retained', next(stage for stage in report['stages'] if stage['name'] == 'dex-decompile')['error'])
+
+    def test_diagnostic_summary_failure_does_not_discard_report(self):
+        self.archive([('classes.dex', b'dex')])
+        with mock.patch.object(pipeline, 'summarize_decompilation', side_effect=PermissionError('unreadable diagnostic log')):
+            code, root = pipeline.analyze(self.apk, self.root / 'out', resolver=lambda *a, **k: {})
+        report = json.loads((root / 'report.json').read_text())
+        self.assertEqual(code, 2)
+        self.assertIn('unreadable', report['diagnostic_summary_error'])
+        self.assertTrue((root / 'index.html').is_file())
 
     def test_successful_tools_without_source_are_partial(self):
         self.archive([('classes.dex', b'dex'), ('assets/Managed/Business.dll', b'dll')])
@@ -293,10 +321,99 @@ class APKTests(unittest.TestCase):
         payload = '</pre><script src="https://host.invalid/x">alert(1)</script>'
         write_report(self.root, {'status': 'partial', 'error': payload, 'commands': []})
         document = (self.root / 'index.html').read_text()
-        self.assertNotIn('<script', document)
+        self.assertNotIn('<script src=', document)
         self.assertNotIn(payload, document)
         self.assertIn('default-src', document)
+        self.assertIn("script-src 'sha256-", document)
+        self.assertIn('id="report-language"', document)
+        self.assertIn('data-zh="下一步调查"', document)
         self.assertEqual(json.loads((self.root / 'report.json').read_text())['error'], payload)
+
+    def test_workbench_maps_declared_entrypoints_to_exact_source_paths(self):
+        manifest = self.root / 'extracted/AndroidManifest.xml'
+        manifest.parent.mkdir()
+        manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="example.test"><application android:name=".App"><activity android:name=".MainActivity"/><activity-alias android:name=".Launcher" android:targetActivity=".MainActivity"/><service android:name="elsewhere.Sync"/></application></manifest>')
+        source = self.root / 'decompiled/java/example/test'
+        source.mkdir(parents=True)
+        (source / 'MainActivity.java').write_text('class MainActivity {}')
+        (source / 'App.java').write_text('class App {}')
+        (source / 'Other.java').write_text('class Other {}')
+        (source / 'Launcher.java').write_text('class Launcher {}')
+        fallback = self.root / 'decompiled/java-simple/elsewhere'
+        fallback.mkdir(parents=True)
+        (fallback / 'Sync.kt').write_text('class Sync')
+        write_report(self.root, {'status': 'partial', 'commands': [], 'detected': {'dex': ['classes.dex'], 'native': ['lib/arm64/libx.so']}})
+        work = json.loads((self.root / 'report.json').read_text())['workbench']
+        entries = {entry['qualifiedName']: entry for entry in work['entrypoints']}
+        self.assertEqual(entries['example.test.MainActivity']['sourcePaths'], ['decompiled/java/example/test/MainActivity.java'])
+        self.assertEqual(entries['example.test.App']['mapping'], 'filename-match')
+        self.assertEqual(entries['example.test.Launcher']['targetQualifiedName'], 'example.test.MainActivity')
+        self.assertEqual(entries['example.test.Launcher']['sourcePaths'], ['decompiled/java/example/test/MainActivity.java'])
+        self.assertEqual(entries['elsewhere.Sync']['sourcePaths'], ['decompiled/java-simple/elsewhere/Sync.kt'])
+        self.assertEqual([group['kind'] for group in work['payloadGroups']], ['dex', 'native'])
+        self.assertIn('MainActivity', (self.root / 'docs/rebuild.md').read_text())
+        document = (self.root / 'index.html').read_text()
+        self.assertIn('data-source-path="decompiled/java/example/test/MainActivity.java"', document)
+        self.assertIn('connect-src \'self\'', document)
+        self.assertIn('Find in file', document)
+
+    def test_workbench_ignores_symlinks_and_caps_inventory(self):
+        source = self.root / 'decompiled/java'
+        source.mkdir(parents=True)
+        for index in range(3):
+            (source / ('File' + str(index) + '.java')).write_text('class File {}')
+        outside = self.root / 'outside.java'
+        outside.write_text('secret')
+        (source / 'Link.java').symlink_to(outside)
+        manifest = self.root / 'extracted/AndroidManifest.xml'
+        manifest.parent.mkdir()
+        manifest.symlink_to(outside)
+        with mock.patch('workbench.MAX_SOURCES', 2):
+            write_report(self.root, {'status': 'partial', 'commands': []})
+        work = json.loads((self.root / 'report.json').read_text())['workbench']
+        self.assertEqual(len(work['sourceFiles']), 2)
+        self.assertTrue(work['sourceTruncated'])
+        self.assertEqual(work['entrypoints'], [])
+        self.assertNotIn('Link.java', [item['path'] for item in work['sourceFiles']])
+
+    def test_workbench_reads_aapt_manifest_when_extracted_manifest_is_binary(self):
+        evidence = self.root / 'evidence'
+        evidence.mkdir()
+        (evidence / 'manifest.txt').write_text('E: manifest\n  A: package="example.test"\n  E: application\n    E: activity\n      A: android:name=".Main"\n    E: activity-alias\n      A: android:name=".Launcher"\n      A: android:targetActivity=".Main"\n')
+        source = self.root / 'decompiled/java/example/test'
+        source.mkdir(parents=True)
+        (source / 'Main.java').write_text('class Main {}')
+        write_report(self.root, {'status': 'partial', 'commands': []})
+        entries = json.loads((self.root / 'report.json').read_text())['workbench']['entrypoints']
+        entry = entries[0]
+        self.assertEqual(entry['qualifiedName'], 'example.test.Main')
+        self.assertEqual(entry['evidence'], 'evidence/manifest.txt:4')
+        self.assertEqual(entries[1]['qualifiedName'], 'example.test.Launcher')
+        self.assertEqual(entries[1]['targetQualifiedName'], 'example.test.Main')
+        self.assertEqual(entries[1]['sourcePaths'], ['decompiled/java/example/test/Main.java'])
+
+    def test_investigation_distinguishes_artifacts_identification_and_runtime(self):
+        report = {'status': 'partial', 'commands': [],
+                  'detected': {'dex': ['classes.dex'], 'native': ['lib/a/libunity.so'], 'unity': True},
+                  'assemblies': [{'path': 'Managed/Game.dll', 'output': 'decompiled/managed/Game', 'status': 'complete'}],
+                  'stages': [{'name': 'dex', 'status': 'partial', 'error': 'missing tool'}]}
+        write_report(self.root, report)
+        result = json.loads((self.root / 'report.json').read_text())['investigation']
+        self.assertEqual(result['evidence'][0]['evidence'], 'local-observed')
+        self.assertEqual(result['evidence'][-1]['evidence'], 'static-inferred')
+        self.assertEqual(result['relationships'][0]['to'], 'decompiled/managed/Game')
+        self.assertEqual(result['nextSteps'][0]['reason'], 'missing tool')
+        self.assertEqual(result['nextSteps'][-1]['evidence'], 'unverified')
+        self.assertIn('Investigation next steps', (self.root / 'index.html').read_text())
+
+    def test_report_language_uses_system_preference_and_english_fallback(self):
+        from report import system_language
+        with mock.patch('report.sys.platform', 'darwin'), mock.patch('report.subprocess.run', return_value=types.SimpleNamespace(returncode=0, stdout='(\n "zh-Hans-CN",\n "en-CN"\n)')):
+            self.assertEqual(system_language(), 'zh')
+        with mock.patch('report.sys.platform', 'linux'), mock.patch.dict(os.environ, {'LANG': 'fr_FR.UTF-8'}, clear=True):
+            self.assertEqual(system_language(), 'en')
+        with mock.patch('report.sys.platform', 'linux'), mock.patch.dict(os.environ, {'LC_ALL': 'zh_CN.UTF-8'}, clear=True):
+            self.assertEqual(system_language(), 'zh')
 
     def test_cclient_schema_and_reference_audit(self):
         directory = self.root / 'project'

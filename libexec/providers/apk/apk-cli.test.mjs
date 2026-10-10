@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const root = fileURLToPath(new URL('../', import.meta.url));
+const root = fileURLToPath(new URL('../../../', import.meta.url));
 
 test('APK paths dispatch without AppID validation or npm setup, preserving argv and exit status', () => {
   const dir = mkdtempSync(join(tmpdir(), 'gillii apk cli '));

@@ -221,6 +221,100 @@ def _unity(directory, downloads, lock, offline):
     return str(directory / 'venv/bin/python')
 
 
+def _patch_blutter_exports(runtime):
+    # Obfuscated Code owners live in nativeLib, outside upstream app.libs.
+    # Export raw ARM64 without passing anonymous functions to semantic analysis.
+    path = runtime / 'blutter/src/DartDumper.cpp'
+    text = path.read_text()
+    marker = 'void DartDumper::DumpCode(const char* out_dir)\n{'
+    if text.count(marker) != 1:
+        raise RuntimeError('unsupported Blutter raw Code export layout')
+    text = text.replace(marker, marker + r"""
+    if (app.nativeLib.topClass) {
+        std::filesystem::create_directories(out_dir);
+        size_t part = 0;
+        std::ofstream raw(std::filesystem::path(out_dir) / "_snapshot_raw_0.dart");
+        Disassembler disassembler(false);
+        for (auto function : app.nativeLib.topClass->Functions()) {
+            if (function->Size() <= 0) continue;
+            if (raw.tellp() > 256 * 1024) {
+                raw.close();
+                raw.open(std::filesystem::path(out_dir) / std::format("_snapshot_raw_{}.dart", ++part));
+            }
+            raw << std::format("  __unknown_function___{:x}() {{\n    // ** addr: {:#x}, size: {:#x}\n", function->Address(), function->Address(), function->Size());
+            auto instructions = disassembler.Disasm((const uint8_t*)function->MemAddress(), function->Size(), function->Address());
+            for (size_t i = 0; i < instructions.Count(); ++i) {
+                auto instruction = instructions.Ptr(i);
+                raw << std::format("    // {:#x}: {} {}\n", instruction->address, instruction->mnemonic, instruction->op_str);
+            }
+            raw << "  }\n";
+        }
+    }
+""")
+    path.write_text(text)
+
+
+def _blutter(root, downloads, lock, offline):
+    spec = lock['blutter']
+    directory = root / ('blutter-' + spec['revision'])
+    def build(target):
+        _extract(_download(spec, downloads, offline), target / 'archive')
+        source = list((target / 'archive').glob('*/blutter.py'))
+        if len(source) != 1:
+            raise RuntimeError('Blutter archive missing entrypoint')
+        shutil.move(str(source[0].parent), target / 'source')
+        shutil.rmtree(target / 'archive')
+        # Upstream uses recovered library URLs as output paths. Flatten them before
+        # compiling so untrusted package paths cannot escape the analysis output.
+        cpp = target / 'source/blutter/src/DartLibrary.cpp'
+        text = cpp.read_text()
+        start = text.index('std::string DartLibrary::CreatePath(')
+        end = text.index('\nvoid DartLibrary::PrintCommentInfo', start)
+        text = text[:start] + """std::string DartLibrary::CreatePath(const char* base_dir)
+{
+    std::string leaf = url.substr(0, 180);
+    for (char& c : leaf) if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) c = '_';
+    leaf += "_" + std::to_string(std::hash<std::string>{}(url)) + ".dart";
+    return (std::filesystem::path(base_dir) / leaf).string();
+}
+""" + text[end:]
+        cpp.write_text(text)
+        _run([sys.executable, '-m', 'venv', str(target / 'venv')])
+        python = target / 'venv/bin/python'
+        wheels = target / 'wheels'
+        wheels.mkdir()
+        if offline:
+            raise RuntimeError('Flutter Python environment unavailable offline')
+        pins = spec['packages']
+        _run([str(python), '-m', 'pip', '--isolated', '--disable-pip-version-check', 'download',
+              '--index-url', 'https://pypi.org/simple', '--only-binary=:all:', '--no-deps', '--dest', str(wheels),
+              *[name + '==' + version for name, version in pins.items()]], timeout=600)
+        for wheel in wheels.glob('*.whl'):
+            name, version = wheel.name.split('-')[:2]
+            normalized = {key.replace('-', '_').lower(): value for key, value in pins.items()}
+            if normalized.get(name.lower()) != version:
+                raise RuntimeError('unlocked Flutter Python dependency')
+            with urllib.request.urlopen('https://pypi.org/pypi/' + name + '/' + version + '/json', timeout=30) as response:
+                data = json.load(response)
+            hashes = {item['digests']['sha256'] for item in data['urls'] if item['filename'] == wheel.name}
+            if _hash(wheel) not in hashes:
+                raise RuntimeError('Flutter Python wheel checksum mismatch')
+        _run([str(python), '-m', 'pip', '--isolated', '--disable-pip-version-check', 'install',
+              '--no-index', '--no-deps', *map(str, wheels.glob('*.whl'))], timeout=600)
+        _run([str(python), '-m', 'pip', '--isolated', 'check'])
+        shutil.rmtree(wheels)
+    target = _install(directory, build)
+    # Version-specific SDK/build files are mutable; keep them outside the verified
+    # source/environment inventory, and restore every upstream source file on use.
+    runtime = root / ('blutter-runtime-' + spec['revision'])
+    if runtime.is_symlink() or (runtime.exists() and any(path.is_symlink() for path in runtime.rglob('*'))):
+        raise RuntimeError('unsafe Flutter runtime cache link')
+    runtime.mkdir(exist_ok=True)
+    shutil.copytree(target / 'source', runtime, dirs_exist_ok=True)
+    _patch_blutter_exports(runtime)
+    return str(target / 'venv/bin/python'), str(runtime / 'blutter.py')
+
+
 def _java_version():
     java = shutil.which('java')
     if not java:
@@ -275,7 +369,7 @@ def resolve_tools(profile, offline=False):
     result = {'metadata': metadata}
     requested = set()
     for name, values in {'basic': {'aapt'}, 'android': {'aapt', 'dexdump', 'jadx'},
-                         'managed': {'dotnet', 'ilspy'}, 'unity': {'python'}}.items():
+                         'managed': {'dotnet', 'ilspy'}, 'unity': {'python'}, 'flutter': {'blutter'}}.items():
         if name in profiles:
             requested.update(values)
     for tool in sorted(requested):
@@ -284,9 +378,11 @@ def resolve_tools(profile, offline=False):
             override = os.environ.get('GILLII_APK_' + tool.upper())
             if override:
                 candidate = Path(os.path.abspath(os.path.expanduser(override)))
-                if not candidate.is_file() or (tool != 'ilspy' and not os.access(candidate, os.X_OK)):
+                if not candidate.is_file() or (tool not in ('ilspy', 'blutter') and not os.access(candidate, os.X_OK)):
                     raise RuntimeError('invalid explicit tool path: ' + str(candidate))
                 result[tool] = str(candidate)
+                if tool == 'blutter':
+                    result['flutter_python'] = sys.executable
                 metadata['sources'][tool] = 'explicit override'
                 continue
             if tool in ('aapt', 'dexdump'):
@@ -372,6 +468,11 @@ def resolve_tools(profile, offline=False):
                 target = _install(root / ('dotnet-' + version), build)
                 result[tool] = str(target / 'dotnet')
                 metadata['versions'][tool] = version
+            elif tool == 'blutter':
+                if system not in ('darwin', 'linux'):
+                    raise RuntimeError('automatic Flutter analysis requires macOS/Linux')
+                result['flutter_python'], result[tool] = _blutter(root, downloads, lock, offline)
+                metadata['versions'][tool] = lock['blutter']['revision']
             elif tool == 'python':
                 if system not in ('darwin', 'linux'):
                     raise RuntimeError('automatic Unity Python environment requires macOS/Linux')

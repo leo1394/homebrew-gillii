@@ -27,6 +27,7 @@ Read `report.json` first, then relevant evidence and stage logs. Use `index.html
 - Recovery status, `coverage.status` and `analysis.status` are distinct. Partial coverage is not proof of a broken recovery pipeline. APK exit 2 is not a reason to discard results or blindly retry.
 - Failures before an output directory is established may only provide stderr. Record both process exit code and whether a report exists.
 - Recovered code is not a guaranteed buildable original project. Static API calls and URL constants do not prove runtime reachability, backend implementation or a security vulnerability. Native/IL2CPP/Flutter identification does not mean source recovery.
+- For investigation, read `relationships`, `gaps` and `nextSteps` in mini-program evidence, or `investigation` in APK reports. `local-observed` refers to artifact facts; `static-inferred` to static relationships; `unverified` to claims needing more evidence. None means runtime verification. Non-interactive CLI calls do not start the local viewer.
 - Preserve original packages, hashes and evidence. Failed/partial APK runs retain `logs/execution.log` and tool logs; complete APK runs remove process logs automatically. Do not overwrite previous outputs. Report verified findings separately from inferences and missing evidence.
 - See [mini-program reports](docs/MINI-PROGRAM-REPORTS.md) and [APK workflow](docs/APK.md) for artifact details.
 
@@ -37,13 +38,17 @@ Inspect `git status` and the implementation before editing; preserve unrelated c
 | Area | Location |
 | --- | --- |
 | Shell entry, help and prevalidation | `bin/gillii` |
-| Dispatch and mini-program pipeline | `libexec/gillii.mjs` |
-| Decryption and reconstruction | `libexec/decrypt.mjs`, `libexec/restore-*` |
-| Mini-program evidence and reports | `libexec/mini-report.mjs` |
-| APK stages, dependencies and reports | `libexec/apk/` |
-| Pinned APK dependencies | `libexec/apk/toolchain-lock.json` |
-| Vendored unpacker | `libexec/tools/wxappUnpacker/` |
+| CLI dispatch | `libexec/gillii.mjs`, `libexec/providers/index.mjs` |
+| Mini-program pipeline | `libexec/providers/miniprogram/index.mjs` |
+| Decryption and reconstruction | `libexec/providers/miniprogram/decrypt.mjs`, `libexec/providers/miniprogram/restore-*` |
+| Mini-program evidence and reports | `libexec/providers/miniprogram/mini-report.mjs` |
+| Report workbench and viewer | `libexec/providers/workbench/` |
+| APK stages, dependencies and reports | `libexec/providers/apk/` |
+| Pinned APK dependencies | `libexec/providers/apk/toolchain-lock.json` |
+| Vendored unpacker | `libexec/providers/miniprogram/tools/wxappUnpacker/` |
 | Distribution and CLI documentation | `Formula/`, `install.sh`, `completions/`, `man/`, `README*.md` |
+
+Provider boundaries and extension points are documented in [PROVIDERS.md](docs/PROVIDERS.md).
 
 Use existing dependency locks and integrity checks. Keep generic APK logic separate from schema-gated CClient analysis. Preserve path traversal protections, resource limits, report escaping and URL redaction. Do not commit input packages, recovered user content, credentials, tool caches or machine-specific paths. Do not publish releases or change versions without a release request.
 
@@ -52,7 +57,7 @@ Use existing dependency locks and integrity checks. Keep generic APK logic separ
 Run checks appropriate to the change from the repository root:
 
 ```sh
-node --test libexec/*.test.mjs
+node --test libexec/providers/*/*.test.mjs
 python3 -B -m unittest discover -s tests -p 'test_apk*.py'
 bash tests/test.sh
 git diff --check

@@ -20,6 +20,7 @@ from xml.etree import ElementTree
 
 from cclient import analyze as analyze_cclient
 from report import write_report
+from flutter import aot_input, index_output
 
 MAX_ENTRIES = 100000
 MAX_FILE = 1024 * 1024 * 1024
@@ -243,6 +244,40 @@ class Runner:
         log_event(self.root, 'UNAVAILABLE ' + stage + ': ' + str(reason))
 
 
+def summarize_decompilation(root, report):
+    """Keep tool failures separate from retained, approximate Java output."""
+    outputs = {'dex-decompile': ('normal', 'decompiled/java'), 'dex-simple': ('simple', 'decompiled/java-simple')}
+    summaries = []
+    for stage in report['stages']:
+        if stage['name'] not in outputs:
+            continue
+        mode, output = outputs[stage['name']]
+        count = sum(1 for path in (root / output).rglob('*.java') if path.is_file() and not path.is_symlink())
+        summary = {'stage': stage['name'], 'mode': mode, 'output': output, 'source_files': count,
+                   'returncode': stage.get('returncode'), 'error_count': None, 'diagnostics': []}
+        log = root / stage.get('log', 'logs/unavailable')
+        if log.is_file() and not log.is_symlink():
+            # The final JADX summary is at the tail. Avoid loading debug logs in full.
+            with log.open('rb') as stream:
+                stream.seek(max(0, log.stat().st_size - 128 * 1024))
+                text = stream.read(128 * 1024).decode('utf-8', errors='replace')
+            matches = re.findall(r'(?:finished with errors, count:\s*|ERROR\s+-\s+)(\d{1,12})(?!\d)(?: errors occurred)?', text)
+            if matches:
+                summary['error_count'] = int(matches[-1])
+            for line in text.splitlines():
+                if 'ERROR' in line and ('Method:' in line or 'Class:' in line):
+                    summary['diagnostics'].append(line.strip()[:500])
+                    if len(summary['diagnostics']) >= 12:
+                        break
+        if stage['status'] != 'complete' and not stage.get('error'):
+            stage['error'] = 'JADX exit=' + str(stage.get('returncode')) + '; ' + str(count) + ' Java files retained'
+            if summary['error_count'] is not None:
+                stage['error'] += '; ' + str(summary['error_count']) + ' decompiler errors'
+            stage['error'] += '. Output is approximate; inspect the retained diagnostics.'
+        summaries.append(summary)
+    report['decompilation'] = summaries
+
+
 def analyze(source, output=None, offline=False, timeout=600, resolver=None):
     source = Path(source).expanduser().resolve()
     # An explicit output is an exact new directory; never merge with previous results.
@@ -292,8 +327,11 @@ def analyze(source, output=None, offline=False, timeout=600, resolver=None):
         report['detected'] = detected
         if detected['native'] or detected['il2cpp'] or detected['flutter']:
             report['stages'].append({'name': 'unsupported-source-recovery', 'status': 'partial',
-                                      'error': 'Native/IL2CPP/Flutter source recovery is unsupported; binary evidence is retained.'})
+                                      'error': ('Flutter original Dart source is not recovered; runtime libraries and assets are retained. JADX analyzes only Android Java/Kotlin code.' if detected['flutter'] else 'Native/IL2CPP original source recovery is unsupported; binary evidence is retained.')})
+        flutter_input = aot_input(root) if detected['flutter'] else None
         profiles = {'android' if detected['dex'] else 'basic'}
+        if flutter_input:
+            profiles.add('flutter')
         if detected['managed']:
             profiles.add('managed')
         if detected['unity']:
@@ -340,6 +378,25 @@ def analyze(source, output=None, offline=False, timeout=600, resolver=None):
                     shutil.copyfile(log, root / 'evidence' / (Path(dex).name + '.txt'))
                 else:
                     runner.missing('dexdump-' + str(index), 'dexdump')
+        if detected['flutter']:
+            report['flutter'] = {'status': 'partial', 'original_source_recovered': False}
+            if flutter_input and tools.get('blutter') and tools.get('flutter_python'):
+                before = runner.timeout
+                runner.timeout = max(before, 1800)
+                try:
+                    ok, _ = runner.run('flutter-aot', [tools['flutter_python'], str(Path(__file__).with_name('flutter.py')),
+                                             tools['blutter'], str(flutter_input), str(root / 'decompiled/dart'), 'offline' if offline else 'online'])
+                finally:
+                    runner.timeout = before
+                report['flutter'].update(index_output(root))
+                report['flutter']['status'] = 'complete' if ok and report['flutter']['assembly_files'] else 'partial'
+                if ok and not report['flutter']['assembly_files']:
+                    report['stages'].append({'name': 'flutter-output', 'status': 'partial', 'error': 'Blutter produced no assembly files'})
+            elif flutter_input:
+                runner.missing('flutter-aot', 'blutter')
+            else:
+                report['stages'].append({'name': 'flutter-aot', 'status': 'partial',
+                                         'error': 'No supported ARM64 ELF libapp.so/libflutter.so pair; binaries/assets retained.'})
         assemblies = []
         for index, assembly in enumerate(detected['managed']):
             path = root / 'extracted' / assembly
@@ -398,6 +455,10 @@ def analyze(source, output=None, offline=False, timeout=600, resolver=None):
         report['status'] = 'failed'
         print_error(str(exc))
     finally:
+        try:
+            summarize_decompilation(root, report)
+        except (OSError, ValueError) as exc:
+            report['diagnostic_summary_error'] = str(exc)[:500]
         for error in report['errors']:
             log_event(root, 'ERROR ' + error)
         for stage in report['stages']:

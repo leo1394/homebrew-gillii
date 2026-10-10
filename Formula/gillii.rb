@@ -1,19 +1,17 @@
 class Gillii < Formula
   desc "Recover WeChat mini-programs and statically analyze Android APKs"
   homepage "https://github.com/leo1394/homebrew-gillii"
-  url "https://github.com/leo1394/homebrew-gillii/releases/download/v0.2.0/gillii-0.2.0.tar.gz"
-  version "0.2.0"
-  sha256 "5e7c7c22800590dc986909ab5e5d06d676ac75a257789dd79daf4c174143f7d6"
+  url "https://github.com/leo1394/homebrew-gillii/releases/download/v0.3.0/gillii-0.3.0.tar.gz"
+  version "0.3.0"
+  sha256 "6871333c7d842f4e5186e7fb1d5502c895fb976164a1edf4d02b74d0a43e2fe1"
   license "GPL-3.0-or-later"
 
   depends_on "node"
-  depends_on "python@3.13"
 
   def install
     libexec.install "bin", "lib", "libexec", "completions", "man", "LICENSE", "THIRD-PARTY.md"
     (bin/"gillii").write <<~EOS
       #!/bin/bash
-      export GILLII_APK_LAUNCHER_PYTHON="${GILLII_APK_LAUNCHER_PYTHON:-#{Formula["python@3.13"].opt_bin}/python3.13}"
       exec "#{libexec}/bin/gillii" "$@"
     EOS
     (bin/"gillii").chmod 0755
@@ -28,7 +26,7 @@ class Gillii < Formula
   end
 
   test do
-    expected = "gillii version 0.2.0 (2026-10-10)\nhttps://github.com/leo1394/homebrew-gillii\n"
+    expected = "gillii version 0.3.0 (2026-10-10)\nhttps://github.com/leo1394/homebrew-gillii\n"
     assert_equal expected, shell_output("#{bin}/gillii version")
     assert_equal expected, shell_output("#{bin}/gillii --version")
     assert_match "Copy, decrypt", shell_output("#{bin}/gillii help chase")

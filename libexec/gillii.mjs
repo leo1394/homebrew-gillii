@@ -8,6 +8,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { decryptPackage, inspectPackage } from './decrypt.mjs';
 import { moduleEntries, pluginPrefix } from './restore-js.mjs';
+import { finishMiniReport, hash } from './mini-report.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const tool = join(here, 'tools/wxappUnpacker');
@@ -20,7 +21,7 @@ const usage = `Usage:
   node gillii.mjs clean [--appid wx...] [--root <cache-directory>] [--dry-run]
   node gillii.mjs setup
   node gillii.mjs info <AppID>
-  node gillii.mjs chase <AppID>
+  node gillii.mjs chase <AppID|path/to/app.apk>
 
 list: locate packages, sorted by modification time; cannot identify app names.
 clean: delete discovered .wxapkg packages; quit WeChat first, then reopen the target.
@@ -33,7 +34,10 @@ macOS privacy restrictions: copy the displayed cache folder in Finder, then use 
 function parse(args) {
   const command = args.shift();
   const options = {};
-  if (['chase', 'info'].includes(command) && args.length && !args[0].startsWith('--')) options.appid = args.shift();
+  if (['chase', 'info'].includes(command) && args.length && !args[0].startsWith('--')) {
+    const target = args.shift();
+    options[command === 'chase' && (existsSync(target) || /[\\/]|\.apk$/i.test(target)) ? 'input' : 'appid'] = target;
+  }
   const allowed = ['list', 'info'].includes(command) ? ['appid', 'root'] : command === 'clean' ? ['appid', 'root', 'dry-run'] : command === 'chase' ? ['appid', 'input', 'output'] : [];
   while (args.length) {
     const name = args.shift();
@@ -138,9 +142,12 @@ export function extractPackage(data, directory, merge = false) {
   return files;
 }
 
-function runNode(script, args, log) {
+function runNode(script, args, log, report) {
+  const started = Date.now();
+  if (report) log = join(dirname(log), String(report.commands.length + 1).padStart(3, '0') + '-' + basename(log));
   const result = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', timeout: 120000, maxBuffer: 32 * 1024 * 1024 });
   writeFileSync(log, (result.stdout || '') + (result.stderr || '') + (result.error ? '\n' + result.error.message : ''));
+  if (report) report.commands.push({ argv: [process.execPath, script, ...args], cwd: process.cwd(), log: log.slice(report.output.length + 1), returncode: result.status, signal: result.signal, error: result.error?.message, durationMs: Date.now() - started });
   if (result.error || result.status !== 0) throw new Error(`Stage failed: ${basename(script)}. See ${log}`);
 }
 
@@ -263,7 +270,7 @@ export function selectMainPackage(packages, appid) {
 }
 
 function recover(options) {
-  if (!options.appid) throw new Error('Usage: gillii chase <AppID>');
+  if (!options.appid) throw new Error('Usage: gillii chase <AppID|path/to/app.apk>');
   let input;
   if (options.input) {
     const p = resolve(options.input);
@@ -274,37 +281,48 @@ function recover(options) {
     if (!found.packages.length) throw new Error(`No cached package for ${options.appid}. Open the mini-program in WeChat, then retry. Privacy-blocked paths: ${found.denied.join(', ') || 'none'}`);
     input = selectMainPackage(found.packages, options.appid);
   }
-  if (!existsSync(join(tool, 'node_modules/acorn'))) {
-    console.log('Preparing dependencies for first run...');
-    setup();
-  }
   // Never overwrite previous runs, originals or existing directories.
   const output = options.output ? resolve(options.output) : mkdtempSync(resolve(`${options.appid}-`));
   if (options.output) mkdirSync(output, { recursive: false, mode: 0o700 });
   console.log(`${highlight('Package:', 36)} ${highlight(input, 36)}\n${highlight('Output:', 36)} ${highlight(output, 36)}`);
-  const report = { appid: options.appid, input, output, started: new Date().toISOString(), status: 'in_progress' };
+  const report = { schemaVersion: 2, appid: options.appid, input, output, started: new Date().toISOString(), status: 'in_progress',
+    stages: [], commands: [], tools: { node: process.version, executable: process.execPath, dependencyLockSha256: hash(readFileSync(join(tool, 'package-lock.json'))) } };
+  let active;
+  function step(name) {
+    if (active) { active.status = 'complete'; active.durationMs = Date.now() - active.startedMs; }
+    active = { name, status: 'running', startedMs: Date.now() };
+    report.stages.push(active);
+  }
   const reportFile = join(output, 'report.json');
   try {
+    step('preserve-and-decrypt');
     const inputCopy = join(output, 'original.wxapkg');
     copyFileSync(input, inputCopy, constants.COPYFILE_EXCL);
     const bytes = readFileSync(inputCopy);
     report.inputSha256 = createHash('sha256').update(bytes).digest('hex');
+    report.originalCopySha256 = hash(readFileSync(inputCopy));
+    const snapshot = join(output, 'packages', options.appid);
+    mkdirSync(snapshot, { recursive: true });
+    report.reproductionInput = join(snapshot, basename(input));
+    copyFileSync(inputCopy, report.reproductionInput, constants.COPYFILE_EXCL);
+    report.reproductionCommand = [process.execPath, fileURLToPath(import.meta.url), 'chase', '--appid', options.appid, '--input', report.reproductionInput];
     const plaintext = bytes.subarray(0, 6).toString() === 'V1MMWX' ? decryptPackage(bytes, options.appid) : bytes;
     report.rawFileCount = inspectPackage(plaintext).length;
     writeFileSync(join(output, `${options.appid}.decrypted.wxapkg`), plaintext, { flag: 'wx', mode: 0o600 });
     const raw = join(output, 'raw'), source = join(output, 'source'), logs = join(output, 'logs');
     mkdirSync(logs);
-    const bundles = [{ path: input, bytes: plaintext, entries: inspectPackage(plaintext) }];
+    const bundles = [{ path: input, retained: report.reproductionInput, originalSha256: hash(bytes), bytes: plaintext, entries: inspectPackage(plaintext) }];
     // Include cached subpackages from exactly the selected version directory.
     for (const file of findPackages(dirname(input)).filter(file => dirname(file.path) === dirname(input) && file.path !== input && (file.appid === options.appid || /^_[^/]*_\.wxapkg$/.test(basename(file.path))))) {
-      const copy = join(output, 'packages', basename(file.path));
+      const copy = join(snapshot, basename(file.path));
       mkdirSync(dirname(copy), { recursive: true });
       copyFileSync(file.path, copy, constants.COPYFILE_EXCL);
       const data = readFileSync(copy);
       const decoded = data.subarray(0, 6).toString() === 'V1MMWX' ? decryptPackage(data, options.appid) : data;
-      bundles.push({ path: file.path, bytes: decoded, entries: inspectPackage(decoded) });
+      bundles.push({ path: file.path, retained: copy, originalSha256: hash(data), bytes: decoded, entries: inspectPackage(decoded) });
     }
-    report.packages = bundles.map(bundle => ({ path: bundle.path, files: bundle.entries.length, sha256: createHash('sha256').update(bundle.bytes).digest('hex') }));
+    report.packages = bundles.map(bundle => ({ path: bundle.path, retained: bundle.retained, originalSha256: bundle.originalSha256, files: bundle.entries.length, sha256: createHash('sha256').update(bundle.bytes).digest('hex') }));
+    step('extract');
     for (const bundle of bundles) {
       extractPackage(bundle.bytes, raw, true);
       extractPackage(bundle.bytes, source, true);
@@ -313,6 +331,17 @@ function recover(options) {
     report.kind = plugin ? 'plugin' : 'mini-program';
     const service = plugin ? 'appservice.js' : 'app-service.js';
     if (!existsSync(join(raw, service))) throw new Error('No supported application or plugin service script found.');
+    step('dependencies');
+    if (!existsSync(join(tool, 'node_modules/acorn'))) {
+      console.log('Preparing dependencies for first run...');
+      const started = Date.now();
+      const args = ['ci', '--ignore-scripts', '--no-audit', '--no-fund'];
+      const result = spawnSync('npm', args, { cwd: tool, encoding: 'utf8', timeout: 600000, maxBuffer: 32 * 1024 * 1024 });
+      writeFileSync(join(logs, 'dependencies.log'), (result.stdout || '') + (result.stderr || '') + (result.error?.message || ''));
+      report.commands.push({ argv: ['npm', ...args], cwd: tool, log: 'logs/dependencies.log', returncode: result.status, error: result.error?.message, durationMs: Date.now() - started });
+      if (result.error || result.status !== 0) throw new Error('npm ci failed. See logs/dependencies.log.');
+    }
+    step('javascript');
     const originals = [];
     console.log('Restoring JavaScript, JSON and WXML...');
     for (const [index, bundle] of bundles.entries()) {
@@ -320,39 +349,67 @@ function recover(options) {
         const name = entry.name.replace(/^\/+/, '');
         const original = readFileSync(join(raw, name), 'utf8');
         originals.push(original);
-        runNode(join(here, 'restore-js.mjs'), [source, join(raw, name)], join(logs, `javascript-${index}.log`));
+        runNode(join(here, 'restore-js.mjs'), [source, join(raw, name)], join(logs, `javascript-${index}.log`), report);
       }
     }
+    step('configuration');
     const compiled = JSON.parse(readFileSync(join(raw, plugin ? 'plugin.json' : 'app-config.json'), 'utf8'));
     restoreCompiledConfigs(source, originals.join('\n'), compiled);
+    step('templates-and-styles');
     const frames = [...new Set(bundles.flatMap(bundle => bundle.entries.map(entry => entry.name.replace(/^\/+/, '')).filter(name => /(?:^|\/)(?:page-frame\.html|app-wxss\.js|page-frame\.js|pageframe\.js)$/.test(name))))];
     if (!frames.length) throw new Error('No supported page frame found. Raw files preserved.');
     for (const [index, name] of frames.entries()) {
       const frame = join(raw, name);
       if (!readFileSync(frame, 'utf8').includes('setCssToHead') && !readFileSync(frame, 'utf8').includes('var x=')) continue;
-      runNode(join(here, 'restore-wxml.cjs'), [source, frame], join(logs, `wxml-${index}.log`));
-      if (readFileSync(frame, 'utf8').includes('batchAddCompiledTemplate')) runNode(join(here, 'restore-modern-wxml.mjs'), [source, frame], join(logs, `skyline-${index}.log`));
+      runNode(join(here, 'restore-wxml.cjs'), [source, frame], join(logs, `wxml-${index}.log`), report);
+      if (readFileSync(frame, 'utf8').includes('batchAddCompiledTemplate')) runNode(join(here, 'restore-modern-wxml.mjs'), [source, frame], join(logs, `skyline-${index}.log`), report);
       console.log('Restoring WXSS...');
       if (/var\s+_C\s*=\s*__COMMON_STYLESHEETS__/.test(readFileSync(frame, 'utf8'))) {
-        runNode(join(here, 'restore-wxss.cjs'), [source, frame], join(logs, `wxss-${index}.log`));
+        runNode(join(here, 'restore-wxss.cjs'), [source, frame], join(logs, `wxss-${index}.log`), report);
       } else {
         const directory = dirname(join(source, name));
         if (plugin) copyFileSync(frame, join(directory, 'app-wxss.js'));
-        runNode(join(tool, 'wuWxss.js'), [directory], join(logs, `wxss-${index}.log`));
+        runNode(join(tool, 'wuWxss.js'), [directory], join(logs, `wxss-${index}.log`), report);
       }
     }
+    step('verification');
     report.validation = verifyRecovery(source, originals.join('\n'), { raw, plugin, appid: options.appid });
     report.status = report.validation.passed ? (report.validation.unavailablePages.length ? 'complete_cached' : 'complete') : 'incomplete';
-    writeFileSync(reportFile, JSON.stringify(report, null, 2));
     if (!report.validation.passed) throw new Error(`Static verification failed.\nSource: ${source}\nReport: ${reportFile}\nCached files could not all be restored; see validation details in the report.`);
+    active.status = report.validation.unavailablePages.length ? 'partial' : 'complete';
+    active.durationMs = Date.now() - active.startedMs;
+    active = null;
     if (report.validation.unavailablePages.length) console.error(highlight(`Cached recovery complete. ${report.validation.unavailablePages.length} declared pages are not cached; visit them in WeChat and retry for full coverage.`, 33, process.stderr));
     console.log(`${highlight(`${report.status === 'complete_cached' ? 'Complete (cached)' : 'Complete'}: ${source}`, report.status === 'complete_cached' ? 33 : 32)}\n${report.validation.modules} JS modules, ${report.validation.pages} pages. Report: ${highlight(reportFile, 36)}`);
   } catch (error) {
     if (report.status === 'in_progress') report.status = 'failed';
     report.error = error.message;
-    writeFileSync(reportFile, JSON.stringify(report, null, 2));
+    if (active) { active.status = 'failed'; active.error = error.message; active.durationMs = Date.now() - active.startedMs; }
     throw error;
+  } finally {
+    for (const name of ['preserve-and-decrypt', 'extract', 'dependencies', 'javascript', 'configuration', 'templates-and-styles', 'verification']) {
+      if (!report.stages.some(stage => stage.name === name)) report.stages.push({ name, status: 'not_run' });
+    }
+    try {
+      finishMiniReport(output, report);
+      console.log('Analysis: ' + join(output, 'index.html'));
+    } catch (error) {
+      report.reportingError = error.message;
+      writeFileSync(reportFile, JSON.stringify(report, null, 2));
+      console.error('Report generation failed: ' + error.message);
+      process.exitCode = 1;
+    }
   }
+}
+
+function recoverApk(options) {
+  const python = process.env.GILLII_APK_LAUNCHER_PYTHON || 'python3';
+  const args = [join(here, 'apk/pipeline.py'), '--input', resolve(options.input)];
+  if (options.output) args.push('--output', resolve(options.output));
+  const result = spawnSync(python, args, { stdio: 'inherit' });
+  if (result.error) throw new Error(`Cannot run APK analyzer: ${result.error.message}. Python 3.10+ is required; set GILLII_APK_LAUNCHER_PYTHON if needed.`);
+  if (result.signal) throw new Error(`APK analyzer stopped by ${result.signal}; retained output may contain diagnostics.`);
+  process.exitCode = result.status ?? 1;
 }
 
 function formatModified(value) {
@@ -400,7 +457,10 @@ function main(args) {
       process.exitCode = 1;
     }
   } else if (command === 'setup') setup();
-  else if (command === 'chase') recover(options);
+  else if (command === 'chase') {
+    if (!options.appid && options.input) recoverApk(options);
+    else recover(options);
+  }
   else throw new Error(`Unknown command: ${command}`);
 }
 

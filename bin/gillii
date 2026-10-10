@@ -26,7 +26,7 @@ gillii_suggest() {
 gillii_help() {
   case "${1:-}" in
     '') cat <<'EOF'
-gillii — locate, decrypt and restore cached WeChat mini-program packages.
+gillii — restore cached WeChat mini-programs and statically analyze APK files.
 Usage: gillii <command> [options]
 Commands: list, clean, chase, info
 Utilities: version, help, completion, setup
@@ -69,13 +69,19 @@ EOF
       ;;
     chase) cat <<'EOF'
 Copy, decrypt, extract, restore and statically verify cached packages.
-Usage: gillii chase <AppID>
+Usage: gillii chase <AppID|path/to/app.apk>
 Automatically find the newest main package, copy it and restore source.
 Example: gillii chase wx0123456789abcdef
 Requires Node.js 22+. Release packages include dependencies; source installs prepare them automatically.
 Creates original.wxapkg, decrypted package, raw/, source/, logs/, report.json.
+Mini-program analysis: index.html, evidence/ and docs/{analysis,reproduction}.md.
+Reports include stage status, file hashes, static API/config evidence and package snapshots.
 Output: ./<AppID>-<unique suffix>/source. Failed runs are retained.
 Optional overrides: --input <file/directory>, --output <new directory>.
+Without an AppID, --input selects an APK; APK analysis requires Python 3.10+.
+APK output: raw/original.apk, extracted/, decompiled/, logs/, report.json and offline index.html.
+Tools are prepared by package type; GILLII_APK_OFFLINE=1 disables downloads.
+APK analysis may be partial (exit 2); readable output is not a buildable project.
 Cached subpackages from the same version are merged; uncached pages are reported.
 No developer-tool runtime/rendering-equivalence guarantee.
 EOF
@@ -95,6 +101,12 @@ EOF
     *) gillii_suggest "$1" $gillii_commands;;
   esac
 }
+gillii_complete_appids() {
+  case "$current" in ''|wx*) ;; *) return 0;; esac
+  "$gillii_root/bin/gillii" list 2>/dev/null | LC_ALL=C awk '
+    length($1) == 18 && $1 ~ /^wx[0-9a-f]+$/ && !seen[$1]++ { print $1 }
+  '
+}
 gillii_complete() {
   # Arguments are the command-line words after gillii, including current prefix.
   command=${1:-}; prev=''; current=''; ended=0; count=$#
@@ -105,8 +117,10 @@ gillii_complete() {
     help:* ) printf '%s\n' $gillii_commands;;
     completion:*) printf '%s\n' bash zsh fish;;
     list:--root|clean:--root|info:--root|chase:--output) printf '@directories\n';;
+    chase:chase) case "$current" in -*) gillii_options chase;; *) printf '@paths\n'; gillii_complete_appids;; esac;;
     chase:--input) printf '@paths\n';;
-    list:--appid|clean:--appid|info:--appid|chase:--appid) :;;
+    list:--appid|clean:--appid|info:--appid|chase:--appid) gillii_complete_appids;;
+    info:info) case "$current" in -*) gillii_options info;; *) gillii_complete_appids;; esac;;
     list:*|clean:*|chase:*|info:*) gillii_options "$command";;
   esac
 }
@@ -130,7 +144,14 @@ if [ "$command" = completion ]; then
 fi
 # The normal recovery flow needs only an AppID.
 if { [ "$command" = chase ] || [ "$command" = info ]; } && [ "$#" -gt 0 ]; then
-  case "$1" in --*) :;; *) set -- --appid "$1" "${@:2}";; esac
+  case "$1" in
+    --*) :;;
+    *) if [ "$command" = chase ] && { [ -f "$1" ] || [[ "$1" == */* || "$1" == *.[aA][pP][kK] ]]; }; then
+         set -- --input "$1" "${@:2}"
+       else
+         set -- --appid "$1" "${@:2}"
+       fi;;
+  esac
 fi
 # Validate only command tokens/options, never guess corrections for user values.
 args=("$@"); index=0

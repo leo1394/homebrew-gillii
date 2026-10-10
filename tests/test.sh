@@ -96,17 +96,18 @@ sub=cachepath/'newer.wxapkg';sub.write_bytes(package_bytes({'page.js':b''}));os.
 npmroot=scratch/'npm mock';npmroot.mkdir();npm=npmroot/'npm'
 npm.write_text('#!/bin/bash\nmkdir -p node_modules/acorn\nprintf stub > node_modules/acorn/package.json\nprintf called > "$HOME/npm-called"\n');npm.chmod(0o755)
 autoenv=os.environ.copy();autoenv['PATH']=str(npmroot)+':'+autoenv['PATH']
+bundled=(root/'libexec/tools/wxappUnpacker/node_modules/acorn').exists()
 for attempt in range(2):
  r=subprocess.run([str(root/'bin/gillii'),'chase',appid],cwd=work,env=autoenv,text=True,capture_output=True)
  assert r.returncode!=0 and 'Package:' in r.stdout,(r.stdout,r.stderr)
- assert ('Preparing dependencies' in r.stdout)==(attempt==0)
+ assert ('Preparing dependencies' in r.stdout)==(attempt==0 and not bundled)
 outputs=list(work.glob(appid+'-*'));assert len(outputs)==2
 for output in outputs:
  assert (output/'original.wxapkg').read_bytes()==main.read_bytes()
  assert (output/'raw/app-config.json').exists()
  assert json.loads((output/'report.json').read_text())['input']==str(main)
-assert (pathlib.Path(os.environ['HOME'])/'npm-called').exists()
-assert 'Usage: gillii chase <AppID>' in run('gillii','chase',ok=False).stderr
+assert (pathlib.Path(os.environ['HOME'])/'npm-called').exists()==(not bundled)
+assert 'Usage: gillii chase <AppID|path/to/app.apk>' in run('gillii','chase',ok=False).stderr
 assert 'Invalid AppID' in run('gillii','chase','invalid',ok=False).stderr
 prefix=scratch/'install space'
 run('bash',str(root/'install.sh'),'--prefix',str(prefix),'--version',version)
@@ -181,6 +182,22 @@ COMP_WORDS=(gillii chase --appid wx0123456789abcdef --input "$scratch/path space
 [ "${COMPREPLY[0]}" = "$scratch/path space/package file.wxapkg" ]
 COMP_WORDS=(gillii chase -- '');COMP_CWORD=3;_gillii
 [ "${#COMPREPLY[@]}" -eq 0 ]
+mkdir -p "$HOME/Library/Containers/com.tencent.xinWeChat.MiniProgram/Data/wx0123456789abcdef/1"
+touch "$HOME/Library/Containers/com.tencent.xinWeChat.MiniProgram/Data/wx0123456789abcdef/1/main.wxapkg"
+[ "$("$root/bin/gillii" __complete chase wx)" = "$(printf '@paths\nwx0123456789abcdef')" ]
+COMP_WORDS=("$root/bin/gillii" chase wx0123);COMP_CWORD=2;_gillii
+[ "${COMPREPLY[0]}" = wx0123456789abcdef ]
+mkdir -p "$HOME/Downloads"
+touch "$HOME/Downloads/movie file.apk"
+COMP_WORDS=("$root/bin/gillii" chase '~/Downlo');COMP_CWORD=2;_gillii
+[ "${COMPREPLY[0]}" = "$HOME/Downloads" ]
+COMP_WORDS=("$root/bin/gillii" chase app.apk --output '~/Downlo');COMP_CWORD=4;_gillii
+[ "${COMPREPLY[0]}" = "$HOME/Downloads" ]
+COMP_WORDS=("$root/bin/gillii" chase app.apk --output "$scratch/path space/c");COMP_CWORD=4;_gillii
+[ "${COMPREPLY[0]}" = "$scratch/path space/child dir" ]
+COMP_WORDS=("$root/bin/gillii" chase "$HOME/Downloads/movie");COMP_CWORD=2;_gillii
+[ "${COMPREPLY[0]}" = "$HOME/Downloads/movie file.apk" ]
+[ "$(GILLII_NODE=/nonexistent "$root/bin/gillii" __complete chase wx)" = '@paths' ]
 printf 'PASS: Bash completion options, enums, repeated valued options, paths with spaces, separator\n'
 if command -v zsh >/dev/null 2>&1; then
   zsh -f "$root/tests/zsh-completion.zsh" "$root"

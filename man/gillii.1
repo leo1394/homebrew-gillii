@@ -1,6 +1,6 @@
-.TH GILLII 1 "2026-10-03" "gillii 0.1.0" "User Commands"
+.TH GILLII 1 "2026-10-10" "gillii 0.2.0" "User Commands"
 .SH NAME
-gillii \- locate and restore cached WeChat mini-program packages
+gillii \- restore cached WeChat mini-program packages and analyze APK files
 .SH SYNOPSIS
 .B gillii
 .RI "list [--appid ID] [--root DIR]"
@@ -12,14 +12,15 @@ gillii \- locate and restore cached WeChat mini-program packages
 .RI "info ID [--root DIR]"
 .br
 .B gillii
-.RI "chase ID"
+.RI "chase ID | chase FILE.apk [--output NEWDIR]"
 .br
 .B gillii
 .RI "setup | version | help [COMMAND] | completion bash|zsh|fish"
 .SH DESCRIPTION
 A Bash orchestration tool using Node.js 22+ for V1MMWX decryption,
 main-package extraction, restoration and static verification.
-This is an unpublished development build.
+APK analysis additionally requires Python 3.10+.
+APK analysis and extended reports are available since v0.2.0.
 https://github.com/leo1394/homebrew-gillii
 .SH COMMANDS
 .TP
@@ -45,6 +46,10 @@ Automatically select the newest readable main package, copy and restore it.
 Release archives include dependencies; create ./ID-unique-suffix/source.
 Failures preserve logs.
 No business API requests are made.
+An APK path selects Android analysis, raw extraction, ordinary Android
+decompilation or Unity Mono export. Type-specific tools are prepared
+automatically. Results include an HTML index and reproduction notes.
+A complete analysis does not guarantee a buildable original project.
 .TP
 .B completion
 Print Bash, Zsh or Fish completion without runtime dependencies.
@@ -72,7 +77,7 @@ Optional package file or directory; select its newest readable main package.
 Optional new output directory; parent must exist.
 .TP
 .B --
-End option parsing. These commands accept no positional operands afterward.
+End option parsing. chase accepts its AppID or APK path afterward.
 .SH EXAMPLES
 .nf
 gillii list
@@ -80,17 +85,43 @@ gillii info wx0123456789abcdef
 gillii clean
 gillii chase wx0123456789abcdef
 gillii help chase
+gillii chase ./app.apk --output ./apk-result
 .fi
 .SH ENVIRONMENT
 .TP
 .B XDG_CACHE_HOME
-Cache root, default $HOME/.cache.
+Mini-program cache root, default $HOME/.cache.
 .TP
 .B GILLII_NODE
 Node executable, default node.
+.TP
+.B GILLII_APK_LAUNCHER_PYTHON
+Python 3.10+ executable for the APK helper, default python3.
+.TP
+.B GILLII_APK_PYTHON
+Prepared Unity Python interpreter with UnityPy and TypeTreeGeneratorAPI;
+bypasses automatic Unity environment preparation.
+.TP
+.B GILLII_APK_CACHE
+APK cache root, default $HOME/.cache/gillii/apk.
+.TP
+.B GILLII_APK_OFFLINE
+Set to 1 to disable APK dependency downloads; use cached tools or overrides.
+.TP
+.B GILLII_APK_AAPT, GILLII_APK_DEXDUMP, GILLII_APK_JADX
+Explicit Android inspection and decompilation executables.
+.TP
+.B GILLII_APK_DOTNET, GILLII_APK_ILSPY
+Explicit .NET runtime executable and ilspycmd.dll path.
 .SH FILES
 Output includes original.wxapkg, decrypted package, raw/, source/, logs/
-and report.json. Dependencies are stored under the versioned user cache.
+and report.json. Mini-program reports also include index.html, evidence/ inventories
+and static API/config analysis, plus docs/analysis.md and docs/reproduction.md.
+Selected package snapshots are kept together under packages/<AppID>/ for replay.
+Dependencies are stored under the versioned user cache.
+APK results include raw/original.apk, extracted/, evidence/, decompiled/,
+unity-export/, docs/reproduction.md,
+logs/, report.json and index.html; contents depend on the detected type.
 .SH CAVEATS
 macOS privacy may block terminal reads. Copy the AppID directory with Finder
 and use --input. AppID paths and timestamps cannot identify an app by name.
@@ -98,9 +129,18 @@ Cached subpackages from the same version are merged. Uncached pages are
 listed in report.json with status complete_cached. Games are unsupported.
 Original variable names,
 server code and runtime equivalence cannot be recovered or guaranteed.
+Ordinary Android decompilation requires Java 11+ on PATH.
+Automatic .NET setup supports macOS arm64/x64 and Linux arm64/x64; other hosts need
+a compatible .NET 8 executable via GILLII_APK_DOTNET.
+APK analysis initially targets macOS. Linux is unverified; Windows is
+unsupported. Unity IL2CPP, Flutter and other native payloads produce partial
+results, not restored source projects.
 .SH EXIT STATUS
 0 for success; 1 for invalid input, missing dependencies,
 restoration or validation failure.
+APK reports use complete (exit 0), partial (exit 2), or failed (exit 1).
+Partial results preserve available artifacts and describe unsupported or
+unsuccessful stages.
 .SH SEE ALSO
 .BR bash (1),
 .BR node (1)

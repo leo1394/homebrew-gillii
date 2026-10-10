@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "android": {
+    "version": "35.0.0",
+    "checksum_source": "https://dl.google.com/android/repository/repository2-3.xml",
+    "archives": {
+      "linux": {
+        "url": "https://dl.google.com/android/repository/build-tools_r35_linux.zip",
+        "algorithm": "sha1",
+        "hash": "2cfaa0bbb2336e9ec18ed3ecea84fa2e2af607bc"
+      },
+      "darwin": {
+        "url": "https://dl.google.com/android/repository/build-tools_r35_macosx.zip",
+        "algorithm": "sha1",
+        "hash": "93ab8ce91230e067b5add4bfa79919c52b27f072"
+      }
+    }
+  },
+  "jadx": {
+    "version": "1.5.3",
+    "url": "https://github.com/skylot/jadx/releases/download/v1.5.3/jadx-1.5.3.zip",
+    "hash": "8280f3799c0273fe797a2bcd90258c943e451fd195f13d05400de5e6451d15ec",
+    "checksum_source": "https://api.github.com/repos/skylot/jadx/releases/tags/v1.5.3"
+  },
+  "ilspy": {
+    "version": "9.1.0.7988",
+    "url": "https://api.nuget.org/v3-flatcontainer/ilspycmd/9.1.0.7988/ilspycmd.9.1.0.7988.nupkg",
+    "hash": "2b5058f5ccc164c33b7aabf1a5eb0cf3d3a6af6c145aaf58efd3ed891443af7c",
+    "checksum_source": "SHA-256 of original NuGet bundles in validated CClient reverse-1.0.9/tools"
+  },
+  "dotnet": {
+    "version": "8.0.20",
+    "archives": {
+      "osx-arm64": {
+        "host": {
+          "url": "https://api.nuget.org/v3-flatcontainer/runtime.osx-arm64.microsoft.netcore.dotnethost/8.0.20/runtime.osx-arm64.microsoft.netcore.dotnethost.8.0.20.nupkg",
+          "hash": "05ccf4a3e6895b73cd5aa05e2438612ce98f7b78b9e86355e28f549f19ebddc4"
+        },
+        "hostresolver": {
+          "url": "https://api.nuget.org/v3-flatcontainer/runtime.osx-arm64.microsoft.netcore.dotnethostresolver/8.0.20/runtime.osx-arm64.microsoft.netcore.dotnethostresolver.8.0.20.nupkg",
+          "hash": "5948a54d92d398b19886972d27c44bbd411bbccbbd3defd12fa59fb0a1f06803"
+        },
+        "runtime": {
+          "url": "https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.osx-arm64/8.0.20/microsoft.netcore.app.runtime.osx-arm64.8.0.20.nupkg",
+          "hash": "16b33500a5fe3992091bbab64a52aad67f4de2c56fa8c04da1744d6a707d008e"
+        }
+      }
+    },
+    "checksum_source": "SHA-256 of original NuGet bundles in validated CClient reverse-1.0.9/tools",
+    "runtime_archives": {
+      "linux-arm64": {
+        "url": "https://builds.dotnet.microsoft.com/dotnet/Runtime/8.0.20/dotnet-runtime-8.0.20-linux-arm64.tar.gz",
+        "hash": "58fd19afece5e41bef0ecaf151054d747d13f908f3a627e0fdb73b85ff40bbb5d2aba85aa43ee06d515b9591cbcdd4f87ac1b4e74923dca894df9b7fc59951fb",
+        "algorithm": "sha512",
+        "checksum_source": "https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/8.0/releases.json"
+      },
+      "linux-x64": {
+        "url": "https://builds.dotnet.microsoft.com/dotnet/Runtime/8.0.20/dotnet-runtime-8.0.20-linux-x64.tar.gz",
+        "hash": "4b801177e009ec710d5e2511500aa60bec95811add50fdc59b00a5c486840c66f00c48f272cf7a2f8129ed158ec5b887d1dd60594e612f749ba48fcf48af9cd2",
+        "algorithm": "sha512",
+        "checksum_source": "https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/8.0/releases.json"
+      },
+      "osx-x64": {
+        "url": "https://builds.dotnet.microsoft.com/dotnet/Runtime/8.0.20/dotnet-runtime-8.0.20-osx-x64.tar.gz",
+        "hash": "36e54fac04e2eb51a5ec86251978200007341003cdd34d21296e4b86c75c5fd16cbb1f8522d7bb557f51afae85e774634fa9a47dd950cf1858236e2d8c9c6e7e",
+        "algorithm": "sha512",
+        "checksum_source": "https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/8.0/releases.json"
+      }
+    }
+  },
+  "python": {
+    "packages": {
+      "archspec": "0.2.6",
+      "astc_encoder_py": "0.1.12",
+      "attrs": "26.1.0",
+      "brotli": "1.2.0",
+      "dnfile": "0.18.0",
+      "etcpak": "0.9.15",
+      "fmod_toolkit": "0.1.3",
+      "fsspec": "2026.7.0",
+      "lz4": "4.4.5",
+      "Markdown": "3.10.3",
+      "pefile": "2024.8.26",
+      "pillow": "12.3.0",
+      "pyfmodex": "0.7.2",
+      "texture2ddecoder": "1.0.6",
+      "tpk_ar": "0.2.4",
+      "TypeTreeGeneratorAPI": "0.0.10",
+      "UnityPy": "1.25.3"
+    },
+    "checksum_source": "https://pypi.org/pypi/{package}/{version}/json (wheel SHA-256; binary wheels only)",
+    "pure_python_archives": {
+      "tpk_ar": {
+        "url": "https://files.pythonhosted.org/packages/fa/02/654a73cbd323970b5c1551881968dbadec1d697984fff5fdd33b66764dfc/tpk_ar-0.2.4.tar.gz",
+        "hash": "d64897e5a0bcddd58e8a7d4dd922f372da984a0f98bc3b460ec869aab906ee78",
+        "version": "0.2.4",
+        "checksum_source": "https://pypi.org/pypi/tpk_ar/0.2.4/json"
+      }
+    }
+  }
+}

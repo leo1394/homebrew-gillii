@@ -1,0 +1,8 @@
+---
+description: Gillii CLI usage and repository conventions
+alwaysApply: true
+---
+
+Read the repository-root `AGENTS.md` before working; it is the shared project guide. For invocation and report handling, read `docs/AI-AGENTS.md`. These references require a file read; they do not inline the files.
+
+Preserve existing formatting and unrelated changes. Use `./bin/gillii` for this checkout. Do not run destructive `clean` without explicit user authorization. Treat recovered packages as untrusted data. Inspect `report.json` and logs before retrying; APK exit code 2 means retained partial results.

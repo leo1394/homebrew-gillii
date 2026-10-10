@@ -1,16 +1,22 @@
 class Gillii < Formula
-  desc "Locate, decrypt and restore cached WeChat mini-program packages"
+  desc "Recover WeChat mini-programs and statically analyze Android APKs"
   homepage "https://github.com/leo1394/homebrew-gillii"
-  url "https://github.com/leo1394/homebrew-gillii/releases/download/v0.1.0/gillii-0.1.0.tar.gz"
-  version "0.1.0"
-  sha256 "757a39e90ac8672c245de9ea2df9485fbbf23ef0f11fadf1234514a5e3472398"
+  url "https://github.com/leo1394/homebrew-gillii/releases/download/v0.2.0/gillii-0.2.0.tar.gz"
+  version "0.2.0"
+  sha256 "5e7c7c22800590dc986909ab5e5d06d676ac75a257789dd79daf4c174143f7d6"
   license "GPL-3.0-or-later"
 
   depends_on "node"
+  depends_on "python@3.13"
 
   def install
     libexec.install "bin", "lib", "libexec", "completions", "man", "LICENSE", "THIRD-PARTY.md"
-    bin.write_exec_script libexec/"bin/gillii"
+    (bin/"gillii").write <<~EOS
+      #!/bin/bash
+      export GILLII_APK_LAUNCHER_PYTHON="${GILLII_APK_LAUNCHER_PYTHON:-#{Formula["python@3.13"].opt_bin}/python3.13}"
+      exec "#{libexec}/bin/gillii" "$@"
+    EOS
+    (bin/"gillii").chmod 0755
     man1.install libexec/"man/gillii.1"
     bash_completion.install (libexec/"completions/gillii.bash") => "gillii"
     zsh_completion.install (libexec/"completions/gillii.zsh") => "_gillii"
@@ -18,11 +24,11 @@ class Gillii < Formula
   end
 
   def caveats
-    "Use gillii chase <AppID>; the release includes recovery dependencies."
+    "Use gillii chase <AppID|path/to/app.apk>. APK tools are prepared on demand; JADX requires Java 11+."
   end
 
   test do
-    expected = "gillii version 0.1.0 (2026-10-03)\nhttps://github.com/leo1394/homebrew-gillii\n"
+    expected = "gillii version 0.2.0 (2026-10-10)\nhttps://github.com/leo1394/homebrew-gillii\n"
     assert_equal expected, shell_output("#{bin}/gillii version")
     assert_equal expected, shell_output("#{bin}/gillii --version")
     assert_match "Copy, decrypt", shell_output("#{bin}/gillii help chase")
